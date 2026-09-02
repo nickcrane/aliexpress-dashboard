@@ -43,7 +43,7 @@ from .errors import FixtureNotFoundError, TokenMissingError
 from .models import NormalizedCategory, NormalizedProduct, SearchParams, SearchResult, TokenSet
 from .normalize import normalize_category, normalize_detail_product, normalize_search_product
 from .raw import extract_list, get_field
-from .tokens import load_token, now_iso, save_token
+from .tokens import load_token, now_iso, save_token, seed_token_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +192,9 @@ class AliClient:
     def __init__(self, settings: Settings):
         self._settings = settings
         self._last_request_at = 0.0
+        # Bootstraps a fresh deployment (e.g. a new Railway volume with no
+        # token file yet) from AE_TOKEN_SEED; a no-op once the file exists.
+        seed_token_from_env(settings.token_path, settings.token_seed)
         # Loaded regardless of mode -- this is just local state (has a prior
         # authorize/refresh call already saved a token?), not a live API call.
         self._token: Optional[TokenSet] = load_token(settings.token_path)

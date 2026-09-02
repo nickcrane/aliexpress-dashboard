@@ -420,9 +420,36 @@ expose (it requires a browser login, not something to trigger remotely).
 error. Auto-generated interactive docs are at `/docs` when the server's
 running.
 
-**Not yet deployed anywhere** — this runs locally for now. Deploying it
-(Railway or otherwise) so a remote scheduler can actually reach it is a
-separate next step, not done yet.
+### Deploying to Railway
+
+`Procfile` and `railpack.json` are both in the repo already, pinning the
+start command to `uvicorn aliexpress_dashboard.api.app:app --host 0.0.0.0
+--port $PORT` — Railway's builder (Railpack) reads `railpack.json` directly;
+`Procfile` is kept alongside as a fallback. Steps:
+
+1. **New Railway project → Deploy from GitHub repo**, pointed at this repo's `main` branch.
+2. **Attach a Volume** to the service, and set `AE_TOKEN_PATH` (and
+   `AE_DB_PATH`, if the collector/dashboard should persist data there too) to
+   a path inside it. Without this, the token file — and anything else not on
+   the volume — is wiped on every redeploy, since Railway's own filesystem is
+   ephemeral.
+3. **Set the rest of the environment variables** in the dashboard: `AE_MODE=live`,
+   `AE_APP_KEY`, `AE_APP_SECRET`, `AE_API_KEY`, `AE_CALLBACK_URL`,
+   `AE_TARGET_CURRENCY`, `AE_TARGET_LANGUAGE`, `AE_SHIP_TO_COUNTRY` — same
+   values as local, entered directly in Railway's dashboard.
+4. **Bootstrap the token.** The interactive `authorize` step needs a browser,
+   which a Railway container doesn't have — so get a token locally first
+   (`authorize` + `authorize --code <code>`, as above), then copy the exact
+   contents of the resulting `data/token.json` into Railway's `AE_TOKEN_SEED`
+   variable. On first boot, the app writes that seed to `AE_TOKEN_PATH` **only
+   if the file doesn't already exist** — it's a one-time bootstrap, never an
+   ongoing overwrite, so it can't clobber a token that's since been refreshed
+   on the volume. From then on, `POST /refresh-token` keeps the file current
+   on its own; `AE_TOKEN_SEED` can be left in place (harmless) or removed.
+5. **Schedule the refresh** — from OpenClaw or Railway's own cron, hitting
+   `POST https://<your-railway-url>/refresh-token` with the `X-API-Key`
+   header roughly every 6 hours (see [Getting API credentials](#getting-api-credentials)
+   for why not exactly every 24).
 
 ## Testing
 

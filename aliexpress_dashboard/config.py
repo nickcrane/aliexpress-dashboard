@@ -70,6 +70,12 @@ class Settings:
             os.getenv("AE_TOKEN_PATH", str(PROJECT_ROOT / "data" / "token.json"))
         )
     )
+    # One-time bootstrap for a fresh deployment with no token file yet (e.g.
+    # a new Railway volume) -- the exact JSON contents of a local token.json,
+    # obtained via the interactive `authorize` step somewhere with a
+    # browser. Only ever used to create token_path if it doesn't already
+    # exist; never overwrites it. See client/tokens.py:seed_token_from_env.
+    token_seed: str | None = field(default_factory=lambda: os.getenv("AE_TOKEN_SEED") or None)
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
     # Shared secret the HTTP API (aliexpress_dashboard/api/) requires on every
     # request via the X-API-Key header. Unset means the API refuses all
