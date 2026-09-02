@@ -109,6 +109,7 @@ aliexpress_dashboard/
     normalize.py             Defensive field parsing, incl. bucketed sales counts
   collector/               CLI + the SQLite write path (searches, runs, products, observations)
   dashboard/               Streamlit app: filters, momentum, scoring, shortlists
+  api/                       FastAPI service for remote task-triggering (e.g. from OpenClaw); see below
   db/                       Connection helper + migrations (plain SQL, no ORM)
 run_dashboard.py            Launcher -- run this with `streamlit run`, not app.py directly
 tests/fixtures/              Recorded API responses used in AE_MODE=fixture
@@ -131,6 +132,7 @@ All configuration is environment variables, loaded from `.env` (see
 | `AE_TOKEN_PATH` | Defaults to `./data/token.json` — where the OAuth access/refresh token is cached after authorizing. Written programmatically, not hand-edited |
 | `AE_FIXTURES_DIR` | Defaults to `./tests/fixtures`; only used in fixture mode |
 | `AE_MIN_REQUEST_INTERVAL_SECONDS`, `AE_MAX_RETRIES`, `AE_BACKOFF_BASE_SECONDS`, `AE_BACKOFF_MAX_SECONDS` | Rate limiting / exponential backoff, live mode only |
+| `AE_API_KEY` | Required to use the HTTP API (see below) — every protected request must send it as `X-API-Key`. Unset means the API rejects everything |
 
 Never commit `.env` — it's gitignored. Only `.env.example` (with blank
 credential fields) is tracked. `data/token.json` is also gitignored.
@@ -375,6 +377,53 @@ assumption.
   join automatically. Building an id→name lookup for display is a natural
   small addition, not built yet.
 
+## HTTP API
+
+A small FastAPI service (`aliexpress_dashboard/api/`) for triggering tasks
+remotely — the intended use is letting one or more automation/agent tools
+(e.g. an OpenClaw assistant's scheduled job) call into this project without
+needing shell or file-system access to it. Currently one task:
+`POST /refresh-token`, wrapping the OAuth refresh described above; more are
+expected to follow the same pattern (a route, the API-key dependency, a
+typed JSON response).
+
+Run it locally:
+
+```bash
+uvicorn aliexpress_dashboard.api.app:app --reload --port 8000
+```
+
+Every route except `GET /health` requires an `X-API-Key` header matching
+`AE_API_KEY` in `.env`. **The API fails closed**: if `AE_API_KEY` isn't set
+at all, every protected route returns `503` rather than running open — this
+matters once it's sitting behind a public URL in front of real credentials.
+Generate a key with:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Example call:
+
+```bash
+curl -X POST -H "X-API-Key: $AE_API_KEY" http://localhost:8000/refresh-token
+```
+
+```json
+{"status": "ok", "expires_in": 86400, "refresh_expires_in": 172800, "obtained_at": "..."}
+```
+
+`409` means there's no refresh token on file at all — the interactive
+`authorize` step needs to be run again, which this API deliberately doesn't
+expose (it requires a browser login, not something to trigger remotely).
+`502` means the call reached AliExpress but AliExpress itself returned an
+error. Auto-generated interactive docs are at `/docs` when the server's
+running.
+
+**Not yet deployed anywhere** — this runs locally for now. Deploying it
+(Railway or otherwise) so a remote scheduler can actually reach it is a
+separate next step, not done yet.
+
 ## Testing
 
 ```bash
@@ -389,5 +438,6 @@ exercises the parsing this needed once real data arrived. Covers field
 parsing (including the edge cases above), envelope unwrapping across all
 three confirmed shapes, idempotent collection, pagination, momentum
 calculation, score weighting, and the OAuth token exchange/refresh flow,
-plus a Streamlit `AppTest` smoke test that boots the actual dashboard against
-a seeded database.
+the HTTP API's auth behavior and its refresh-token route, plus a Streamlit
+`AppTest` smoke test that boots the actual dashboard against a seeded
+database.

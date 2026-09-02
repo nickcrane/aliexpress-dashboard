@@ -71,6 +71,10 @@ class Settings:
         )
     )
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
+    # Shared secret the HTTP API (aliexpress_dashboard/api/) requires on every
+    # request via the X-API-Key header. Unset means the API refuses all
+    # requests (fail closed) rather than running open -- see api/security.py.
+    api_key: str | None = field(default_factory=lambda: os.getenv("AE_API_KEY") or None)
 
     def __post_init__(self) -> None:
         if self.mode not in ("fixture", "live"):
