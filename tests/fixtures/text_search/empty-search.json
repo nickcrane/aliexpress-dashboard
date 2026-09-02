@@ -1,0 +1,14 @@
+{
+  "aliexpress_ds_text_search_response": {
+    "code": "0",
+    "msg": "Call succeeds",
+    "data": {
+      "pageIndex": 1,
+      "pageSize": 20,
+      "totalCount": 0,
+      "products": {}
+    },
+    "request_id": "fixture-request-id",
+    "_trace_id_": "fixture-trace-id"
+  }
+}

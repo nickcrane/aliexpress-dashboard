@@ -1,0 +1,24 @@
+{
+  "aliexpress_ds_category_get_response": {
+    "resp_result": {
+      "result": {
+        "total_result_count": 7,
+        "categories": {
+          "category": [
+            { "category_id": 15, "category_name": "Home & Garden" },
+            { "category_id": 44, "category_name": "Consumer Electronics" },
+            { "category_id": 1503, "category_name": "Lighting", "parent_category_id": 15 },
+            { "category_id": 1509, "category_name": "Kitchen Fixtures", "parent_category_id": 15 },
+            { "category_id": 1512, "category_name": "Travel Accessories", "parent_category_id": 15 },
+            { "category_id": 4402, "category_name": "Chargers", "parent_category_id": 44 },
+            { "category_id": 4403, "category_name": "Speakers", "parent_category_id": 44 }
+          ]
+        }
+      },
+      "resp_code": 200,
+      "resp_msg": "Call succeeds"
+    },
+    "request_id": "fixture-request-id-categories",
+    "_trace_id_": "fixture-trace-id-categories"
+  }
+}

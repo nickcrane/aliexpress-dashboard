@@ -1,0 +1,40 @@
+{
+  "result": {
+    "ae_item_base_info_dto": {
+      "product_id": "1005008222333444",
+      "subject": "Portable Mini Bluetooth Speaker Waterproof",
+      "category_id": "4403",
+      "evaluation_count": "512",
+      "avg_evaluation_rating": "4.5",
+      "sales_count": "1000+",
+      "product_status_type": "onSelling",
+      "currency_code": "CNY"
+    },
+    "ae_item_sku_info_dtos": {
+      "ae_item_sku_info_d_t_o": [
+        {
+          "sku_id": "12000027158136203",
+          "sku_price": "9.49",
+          "offer_sale_price": "9.49",
+          "currency_code": "GBP",
+          "sku_available_stock": "60"
+        }
+      ]
+    },
+    "ae_multimedia_info_dto": {
+      "image_urls": "https://ae01.alicdn.com/kf/S7a.jpg",
+      "ae_video_dtos": {
+        "ae_video_d_t_o": [
+          {
+            "media_url": "https://media.aliexpress.com/video/12345.mp4",
+            "media_type": "MAIN_IMAGE_VIDEO"
+          }
+        ]
+      }
+    }
+  },
+  "code": "0",
+  "rsp_code": "200",
+  "rsp_msg": "Call succeeds",
+  "request_id": "fixture-request-id-3"
+}

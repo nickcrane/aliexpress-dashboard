@@ -1,0 +1,37 @@
+{
+  "aliexpress_ds_text_search_response": {
+    "code": "0",
+    "msg": "Call succeeds",
+    "data": {
+      "pageIndex": 1,
+      "pageSize": 2,
+      "totalCount": 3,
+      "products": {
+        "selection_search_product": [
+          {
+            "itemId": 1005010111222333,
+            "title": "Paginated Result A",
+            "cateId": 15,
+            "salePrice": "3.99",
+            "salePriceCurrency": "GBP",
+            "targetSalePrice": "3.99",
+            "evaluateRate": "90.0%",
+            "orders": 100
+          },
+          {
+            "itemId": 1005010222333444,
+            "title": "Paginated Result B",
+            "cateId": 15,
+            "salePrice": "4.99",
+            "salePriceCurrency": "GBP",
+            "targetSalePrice": "4.99",
+            "evaluateRate": "91.0%",
+            "orders": 200
+          }
+        ]
+      }
+    },
+    "request_id": "fixture-request-id",
+    "_trace_id_": "fixture-trace-id"
+  }
+}

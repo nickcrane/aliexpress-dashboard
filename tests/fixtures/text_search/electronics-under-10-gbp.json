@@ -1,0 +1,49 @@
+{
+  "aliexpress_ds_text_search_response": {
+    "code": "0",
+    "msg": "Call succeeds",
+    "data": {
+      "pageIndex": 1,
+      "pageSize": 20,
+      "totalCount": 2,
+      "products": {
+        "selection_search_product": [
+          {
+            "itemId": 1005006109529182,
+            "title": "Mini USB Rechargeable LED Reading Light Clip-On Book Lamp",
+            "itemUrl": "https://www.aliexpress.com/item/1005006109529182.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S1a2b3c4d5e6f.jpg",
+            "cateId": 4402,
+            "salePrice": "5.99",
+            "salePriceCurrency": "GBP",
+            "originalPrice": "11.99",
+            "originalPriceCurrency": "GBP",
+            "targetSalePrice": "5.99",
+            "targetOriginalPriceCurrency": "GBP",
+            "discount": "50%",
+            "evaluateRate": "96.7%",
+            "orders": 4102
+          },
+          {
+            "itemId": 1005008222333444,
+            "title": "Portable Mini Bluetooth Speaker Waterproof",
+            "itemUrl": "https://www.aliexpress.com/item/1005008222333444.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S7a2b3c4d5e6f.jpg",
+            "cateId": 4403,
+            "salePrice": "9.49",
+            "salePriceCurrency": "GBP",
+            "originalPrice": "15.99",
+            "originalPriceCurrency": "GBP",
+            "targetSalePrice": "9.49",
+            "targetOriginalPriceCurrency": "GBP",
+            "discount": "41%",
+            "evaluateRate": "93.4%",
+            "orders": 7288
+          }
+        ]
+      }
+    },
+    "request_id": "fixture-request-id",
+    "_trace_id_": "fixture-trace-id"
+  }
+}

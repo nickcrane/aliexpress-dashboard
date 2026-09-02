@@ -1,0 +1,43 @@
+{
+  "aliexpress_ds_text_search_response": {
+    "code": "0",
+    "msg": "Call succeeds",
+    "data": {
+      "pageIndex": 1,
+      "pageSize": 20,
+      "totalCount": 2,
+      "products": {
+        "selection_search_product": [
+          {
+            "itemId": 1005011111222333,
+            "title": "Japanese Style Ceramic Rice Bowl Set",
+            "itemUrl": "https://www.aliexpress.com/item/1005011111222333.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S4a.jpg",
+            "cateId": 1520,
+            "salePrice": "11.45",
+            "salePriceCurrency": "GBP",
+            "targetSalePrice": "11.45",
+            "discount": "34%",
+            "evaluateRate": "98.2%",
+            "orders": 9104
+          },
+          {
+            "itemId": 1005011222333444,
+            "title": "Stainless Steel Multi-Function Vegetable Slicer",
+            "itemUrl": "https://www.aliexpress.com/item/1005011222333444.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S5a.jpg",
+            "cateId": 1509,
+            "salePrice": "9.99",
+            "salePriceCurrency": "GBP",
+            "targetSalePrice": "9.99",
+            "discount": "47%",
+            "evaluateRate": "94.5%",
+            "orders": 15234
+          }
+        ]
+      }
+    },
+    "request_id": "fixture-request-id",
+    "_trace_id_": "fixture-trace-id"
+  }
+}

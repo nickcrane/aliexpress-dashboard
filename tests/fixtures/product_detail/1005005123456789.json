@@ -1,0 +1,27 @@
+{
+  "result": {
+    "ae_item_base_info_dto": {
+      "product_id": "1005005123456789",
+      "subject": "Silicone Kitchen Drain Stopper Sink Strainer",
+      "category_id": "1509",
+      "sales_count": "0",
+      "product_status_type": "onSelling",
+      "currency_code": "CNY"
+    },
+    "ae_item_sku_info_dtos": {
+      "ae_item_sku_info_d_t_o": [
+        {
+          "sku_id": "12000027158136202",
+          "sku_price": "2.49",
+          "offer_sale_price": "2.49",
+          "currency_code": "GBP",
+          "sku_available_stock": "120"
+        }
+      ]
+    }
+  },
+  "code": "0",
+  "rsp_code": "200",
+  "rsp_msg": "Call succeeds",
+  "request_id": "fixture-request-id-2"
+}

@@ -1,0 +1,9 @@
+{
+  "/auth/token/refresh_response": {
+    "access_token": "50000000-fixture-refreshed-access-token",
+    "refresh_token": "50001001-fixture-refreshed-refresh-token",
+    "expires_in": 86400,
+    "refresh_expires_in": 172800,
+    "request_id": "fixture-request-id-token-refresh"
+  }
+}

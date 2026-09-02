@@ -1,0 +1,27 @@
+{
+  "aliexpress_ds_text_search_response": {
+    "code": "0",
+    "msg": "Call succeeds",
+    "data": {
+      "pageIndex": 1,
+      "pageSize": 1,
+      "totalCount": 3,
+      "products": {
+        "selection_search_product": [
+          {
+            "itemId": 1005010444555666,
+            "title": "Only Page That Exists",
+            "cateId": 15,
+            "salePrice": "2.99",
+            "salePriceCurrency": "GBP",
+            "targetSalePrice": "2.99",
+            "evaluateRate": "85.0%",
+            "orders": 50
+          }
+        ]
+      }
+    },
+    "request_id": "fixture-request-id",
+    "_trace_id_": "fixture-trace-id"
+  }
+}

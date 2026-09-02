@@ -1,0 +1,11 @@
+{
+  "/auth/token/create_response": {
+    "access_token": "50000000-fixture-access-token",
+    "refresh_token": "50001001-fixture-refresh-token",
+    "expires_in": 86400,
+    "refresh_expires_in": 172800,
+    "user_nick": "fixture_user",
+    "account": "fixture@example.com",
+    "request_id": "fixture-request-id-token-create"
+  }
+}

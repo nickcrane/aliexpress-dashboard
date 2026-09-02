@@ -1,0 +1,72 @@
+{
+  "aliexpress_ds_text_search_response": {
+    "code": "0",
+    "msg": "Call succeeds",
+    "data": {
+      "pageIndex": 1,
+      "pageSize": 20,
+      "totalCount": 3,
+      "products": {
+        "selection_search_product": [
+          {
+            "itemId": 1005006109529182,
+            "title": "Mini USB Rechargeable LED Reading Light Clip-On Book Lamp",
+            "itemUrl": "https://www.aliexpress.com/item/1005006109529182.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S1a2b3c4d5e6f.jpg",
+            "productVideoUrl": "",
+            "cateId": 1503,
+            "salePrice": "6.99",
+            "salePriceCurrency": "GBP",
+            "originalPrice": "11.99",
+            "originalPriceCurrency": "GBP",
+            "targetSalePrice": "6.99",
+            "targetOriginalPrice": "11.99",
+            "targetOriginalPriceCurrency": "GBP",
+            "discount": "42%",
+            "evaluateRate": "96.7%",
+            "orders": 3821,
+            "score": "4.8",
+            "type": "search"
+          },
+          {
+            "itemId": 1005005123456789,
+            "title": "Silicone Kitchen Drain Stopper Sink Strainer",
+            "itemUrl": "https://www.aliexpress.com/item/1005005123456789.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S2a2b3c4d5e6f.jpg",
+            "cateId": 1509,
+            "salePrice": "2.49",
+            "salePriceCurrency": "GBP",
+            "originalPrice": "3.99",
+            "originalPriceCurrency": "GBP",
+            "targetSalePrice": "2.49",
+            "targetOriginalPrice": "3.99",
+            "targetOriginalPriceCurrency": "GBP",
+            "discount": "38%",
+            "orders": 0,
+            "type": "search"
+          },
+          {
+            "itemId": 1005004987654321,
+            "title": "Foldable Silicone Travel Bottle Set 3pcs",
+            "itemUrl": "https://www.aliexpress.com/item/1005004987654321.html",
+            "itemMainPic": "https://ae01.alicdn.com/kf/S3a2b3c4d5e6f.jpg",
+            "cateId": 1512,
+            "salePrice": "8.79",
+            "salePriceCurrency": "GBP",
+            "originalPrice": "8.79",
+            "originalPriceCurrency": "GBP",
+            "targetSalePrice": "8.79",
+            "targetOriginalPrice": "8.79",
+            "targetOriginalPriceCurrency": "GBP",
+            "discount": "0%",
+            "evaluateRate": "89.1%",
+            "orders": 512,
+            "type": "search"
+          }
+        ]
+      }
+    },
+    "request_id": "fixture-request-id",
+    "_trace_id_": "fixture-trace-id"
+  }
+}

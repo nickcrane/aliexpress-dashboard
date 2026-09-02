@@ -1,0 +1,32 @@
+{
+  "result": {
+    "ae_item_base_info_dto": {
+      "product_id": "1005006109529182",
+      "subject": "Mini USB Rechargeable LED Reading Light Clip-On Book Lamp",
+      "category_id": "1503",
+      "evaluation_count": "1042",
+      "avg_evaluation_rating": "4.7",
+      "sales_count": "3821",
+      "product_status_type": "onSelling",
+      "currency_code": "CNY"
+    },
+    "ae_item_sku_info_dtos": {
+      "ae_item_sku_info_d_t_o": [
+        {
+          "sku_id": "12000027158136201",
+          "sku_price": "6.99",
+          "offer_sale_price": "6.99",
+          "currency_code": "GBP",
+          "sku_available_stock": "480"
+        }
+      ]
+    },
+    "ae_multimedia_info_dto": {
+      "image_urls": "https://ae01.alicdn.com/kf/S1a.jpg;https://ae01.alicdn.com/kf/S1b.jpg"
+    }
+  },
+  "code": "0",
+  "rsp_code": "200",
+  "rsp_msg": "Call succeeds",
+  "request_id": "fixture-request-id-1"
+}
