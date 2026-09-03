@@ -1,13 +1,9 @@
-"""Mobile-first Bootstrap web app -- replaces the Streamlit dashboard as a
-pure HTTP client of aliexpress_dashboard/api/, via the same ApiClient
-Streamlit already uses (dashboard/api_client.py, no Streamlit dependency).
+"""Mobile-first Bootstrap web app -- a pure HTTP client of
+aliexpress_dashboard/api/, via dashboard/api_client.py.
 
-Auth is real Google OAuth via Authlib (Streamlit gets this for free from
-st.login(); a plain FastAPI app doesn't, so it's implemented directly
-here) plus Starlette's signed-cookie SessionMiddleware for session state.
-Reuses the same Google OAuth client and email allowlist as the Streamlit
-gate (dashboard/auth.py) -- just a different callback path/session
-mechanism, not a separate auth system.
+Auth is real Google OAuth via Authlib plus Starlette's signed-cookie
+SessionMiddleware for session state. Authorization (the email allowlist)
+is shared via ../authz.py.
 
 Run locally:
 
@@ -27,9 +23,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from ..authz import is_authorized
 from ..config import Settings, get_settings
 from ..dashboard.api_client import ApiClient
-from ..dashboard.auth import _is_authorized
 from ..dashboard.queries import ProductFilters
 from ..dashboard.scoring import ScoreWeights, compute_composite_score
 
@@ -75,7 +71,7 @@ def require_login(request: Request, settings: Settings = Depends(get_settings)) 
     email = request.session.get("email")
     if not email:
         raise NotAuthenticated()
-    if not _is_authorized(email, settings.dashboard_allowed_emails):
+    if not is_authorized(email, settings.dashboard_allowed_emails):
         raise NotAuthorized(email)
     return email
 
@@ -114,7 +110,7 @@ async def login_google(request: Request):
 async def auth_callback(request: Request, settings: Settings = Depends(get_settings)):
     token = await oauth.google.authorize_access_token(request)
     email = (token.get("userinfo") or {}).get("email")
-    if not _is_authorized(email, settings.dashboard_allowed_emails):
+    if not is_authorized(email, settings.dashboard_allowed_emails):
         return templates.TemplateResponse(request, "unauthorized.html", {"email": email}, status_code=403)
     request.session["email"] = email
     return RedirectResponse(url="/")

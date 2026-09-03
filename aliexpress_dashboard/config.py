@@ -81,34 +81,25 @@ class Settings:
     # request via the X-API-Key header. Unset means the API refuses all
     # requests (fail closed) rather than running open -- see api/security.py.
     api_key: str | None = field(default_factory=lambda: os.getenv("AE_API_KEY") or None)
-    # Where the dashboard finds the HTTP API it reads/writes through instead
+    # Where the web app finds the HTTP API it reads/writes through instead
     # of touching AE_DB_PATH directly -- see dashboard/api_client.py. Not
     # consumed by the API service itself or the collector CLI.
     api_base_url: str = field(default_factory=lambda: os.getenv("AE_API_BASE_URL", "http://localhost:8000"))
-    # Google OAuth client for the dashboard's login gate -- see
-    # dashboard/auth.py. Only consumed by the dashboard.
+    # Google OAuth client for the web app's login gate -- see web/app.py.
+    # Only consumed by the web app.
     google_client_id: str | None = field(default_factory=lambda: os.getenv("AE_GOOGLE_CLIENT_ID") or None)
     google_client_secret: str | None = field(default_factory=lambda: os.getenv("AE_GOOGLE_CLIENT_SECRET") or None)
-    # Signs the dashboard's session cookie. Must stay fixed across restarts
-    # -- generate once the same way as AE_API_KEY (secrets.token_urlsafe(32)).
-    auth_cookie_secret: str | None = field(default_factory=lambda: os.getenv("AE_AUTH_COOKIE_SECRET") or None)
-    auth_redirect_uri: str = field(
-        default_factory=lambda: os.getenv("AE_AUTH_REDIRECT_URI", "http://localhost:8501/oauth2callback")
-    )
     # Comma-separated allowlist -- login proves *who* you are, this decides
     # whether that person is actually allowed to see the dashboard.
     dashboard_allowed_emails: str = field(
         default_factory=lambda: os.getenv("AE_DASHBOARD_ALLOWED_EMAILS", "nic.crane@gmail.com")
     )
-    # Signs the Bootstrap web app's session cookie (web/app.py) -- a
-    # separate secret from auth_cookie_secret since it's a different cookie
-    # mechanism (Starlette SessionMiddleware vs. Streamlit's own auth).
-    # Generate the same way as AE_API_KEY.
+    # Signs the web app's session cookie (Starlette SessionMiddleware). Must
+    # stay fixed across restarts -- generate once the same way as AE_API_KEY
+    # (secrets.token_urlsafe(32)).
     web_session_secret: str | None = field(default_factory=lambda: os.getenv("AE_WEB_SESSION_SECRET") or None)
-    # Reuses the same Google OAuth client as auth_redirect_uri, just a
-    # different callback path -- both need registering in Google Cloud
-    # Console. Different local port than Streamlit's 8501 so both can run
-    # side by side during the transition.
+    # Must exactly match a redirect URI registered on the Google OAuth
+    # client above, and end in /auth/callback.
     web_redirect_uri: str = field(
         default_factory=lambda: os.getenv("AE_WEB_REDIRECT_URI", "http://localhost:8502/auth/callback")
     )

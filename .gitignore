@@ -5,7 +5,6 @@ __pycache__/
 data/*.db
 data/*.db-journal
 data/token.json
-.streamlit/secrets.toml
 .DS_Store
 .pytest_cache/
 *.egg-info/

@@ -1,5 +1,6 @@
-"""Read queries backing the dashboard. Kept separate from app.py so the
-filtering logic can be unit tested without going through Streamlit.
+"""Read queries backing the dashboard. Shared by api/app.py (the data API)
+and web/app.py (via api_client.py), kept separate so the filtering logic
+can be unit tested without going through either.
 """
 
 from __future__ import annotations

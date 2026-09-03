@@ -3,8 +3,8 @@
 A local tool for evaluating AliExpress products to stock in a dropshipping sales
 channel: a **collector** that runs a set of saved searches against the AliExpress
 Open Platform's Drop Shipping API (`aliexpress.ds.*`) and writes results to
-SQLite, and a **Streamlit dashboard** for filtering, ranking, and shortlisting
-what it finds.
+SQLite, and a mobile-first **web dashboard** (FastAPI + Bootstrap) for filtering,
+ranking, and shortlisting what it finds.
 
 The point of storing history (the `observations` table) rather than just the
 latest snapshot is the momentum view: seeing that a product's sales volume moved
@@ -86,17 +86,23 @@ python -m aliexpress_dashboard.collector.cli add-search --name trending-kitchen
 python -m aliexpress_dashboard.collector.cli run
 ```
 
-Then launch the dashboard:
+Then run the HTTP API (the dashboard is a pure client of it, not of SQLite
+directly -- see [HTTP API](#http-api) below) and the web dashboard, each in
+its own terminal:
 
 ```bash
-streamlit run run_dashboard.py
+uvicorn aliexpress_dashboard.api.app:app --port 8000
+```
+```bash
+AE_API_BASE_URL=http://localhost:8000 uvicorn aliexpress_dashboard.web.app:app --port 8502
 ```
 
-That's the whole loop. Everything — collector, storage, dashboard — runs
+That's the whole loop. Everything — collector, storage, API, dashboard — runs
 end-to-end against the bundled fixtures in `tests/fixtures/`, which cover a
 handful of realistic products and some deliberate edge cases (a missing
 rating, a zero-volume product, a bucketed sales count like `"1000+"`, an
-empty result set, a multi-page search).
+empty result set, a multi-page search). See [Dashboard login](#dashboard-login-google-oauth)
+below to actually get past the web dashboard's login gate locally.
 
 ## Project structure
 
@@ -108,10 +114,16 @@ aliexpress_dashboard/
     auth.py, tokens.py      OAuth authorize URL + local access/refresh token storage
     normalize.py             Defensive field parsing, incl. bucketed sales counts
   collector/               CLI + the SQLite write path (searches, runs, products, observations)
-  dashboard/               Streamlit app: filters, momentum, scoring, shortlists
-  api/                       FastAPI service for remote task-triggering (e.g. from OpenClaw); see below
+  api/                       FastAPI data API (products, filters, momentum, shortlists,
+                               collection trigger, token refresh) -- see HTTP API below.
+                               Owns the SQLite connection; nothing else touches it directly.
+  dashboard/               Shared, framework-agnostic pieces used by api/ and web/: queries,
+                               momentum, scoring, shortlists, and api_client.py (the web
+                               dashboard's HTTP client for api/)
+  web/                       FastAPI + Bootstrap web dashboard: Google login, Products/
+                               Momentum/Shortlists pages, pure HTTP client of api/
+  authz.py                   Shared email-allowlist authorization check
   db/                       Connection helper + migrations (plain SQL, no ORM)
-run_dashboard.py            Launcher -- run this with `streamlit run`, not app.py directly
 tests/fixtures/              Recorded API responses used in AE_MODE=fixture
 data/                         SQLite database + cached OAuth token live here (gitignored)
 ```
@@ -245,83 +257,79 @@ CLI call itself.
 
 ## The dashboard
 
+A mobile-first FastAPI + Bootstrap web app -- a pure HTTP client of the API
+(see [HTTP API](#http-api) below), not of SQLite directly. Run it against a
+running API:
+
 ```bash
-streamlit run run_dashboard.py
+AE_API_BASE_URL=http://localhost:8000 uvicorn aliexpress_dashboard.web.app:app --reload --port 8502
 ```
 
-(Run the launcher, not `aliexpress_dashboard/dashboard/app.py` directly —
-Streamlit executes its target as a top-level script, which would break that
-file's package-relative imports.)
+Three pages, gated behind [Google login](#dashboard-login-google-oauth):
 
-Three tabs, sharing the sidebar's filters (category, price band, minimum
-rating, minimum sales volume, ship-to country) and composite-score weights:
-
-- **Products** — the sortable results table (image, title, price, rating,
-  star rating, review count, volume, discount, composite score,
-  price-history sparkline, link to the listing). Tick rows and save them as a
-  named shortlist; export the current filtered view to CSV or XLSX.
-- **Momentum** — products ranked by change in sales volume, both since the
-  last collection run and over a configurable rolling window (default 14
-  days). Empty until a product has at least two observations, i.e. the
-  collector has run at least twice.
-- **Shortlists** — view, export, and manage the sets you've saved from the
-  Products tab.
+- **Products** (`/`) — a responsive card grid (image, title, price, rating,
+  volume, discount, composite score, link to the listing). Filters
+  (category, price band, minimum rating, minimum sales volume, ship-to
+  country) and score weights live in a Bootstrap offcanvas panel on
+  mobile/tablet and a persistent sidebar on desktop; filtering is a plain
+  page reload (query-param driven), not client-side JS state. Tick
+  checkboxes and save them as a named shortlist.
+- **Momentum** (`/momentum`) — products ranked by change in sales volume,
+  both since the last collection run and over a configurable rolling
+  window (default 14 days). Empty until a product has at least two
+  observations, i.e. the collector has run at least twice.
+- **Shortlists** (`/shortlists`) — view and manage the sets you've saved
+  from the Products page; remove individual products or delete a
+  shortlist entirely.
 
 The composite score blends sales volume, rating, review count, and
 price-band fit, each ranked relative to whatever's currently filtered (not
-against the whole database) — the weights are sliders in the sidebar, so
-"suitable" is whatever blend you dial in. Review count will mostly show as
-neutral (0.5) since it's usually blank — see the gaps section below. Price-band
-fit is modeled as *cheaper within your filtered band scores higher*; if you
-want "fit" to mean something else (e.g. closest to the middle of the band),
-that's a one-function change in `aliexpress_dashboard/dashboard/scoring.py`.
+against the whole database) — the weights are sliders in the filter panel,
+so "suitable" is whatever blend you dial in. Review count will mostly show
+as neutral (0.5) since it's usually blank — see the gaps section below.
+Price-band fit is modeled as *cheaper within your filtered band scores
+higher*; if you want "fit" to mean something else (e.g. closest to the
+middle of the band), that's a one-function change in
+`aliexpress_dashboard/dashboard/scoring.py`.
 
 ## Dashboard login (Google OAuth)
 
-The dashboard is gated behind Google login (`aliexpress_dashboard/dashboard/auth.py`)
-via Streamlit's native OIDC support (`st.login`/`st.logout`/`st.user` --
-not a third-party proxy). Login proves *who* you are; a separate
-`AE_DASHBOARD_ALLOWED_EMAILS` allowlist decides whether that person is
-actually allowed to see it, since any Google account could otherwise sign
-in.
+The dashboard is gated behind real Google OAuth login (`aliexpress_dashboard/web/app.py`,
+via [Authlib](https://docs.authlib.org/)'s Starlette integration plus a
+signed-cookie session -- not a third-party proxy). Login proves *who* you
+are; a separate `AE_DASHBOARD_ALLOWED_EMAILS` allowlist
+(`aliexpress_dashboard/authz.py`) decides whether that person is actually
+allowed to see it, since any Google account could otherwise sign in.
 
 **One-time setup, in Google Cloud Console:**
 
 1. APIs & Services → Credentials → **Create OAuth 2.0 Client ID** (type:
    Web application).
-2. **Authorized redirect URIs**: add `http://localhost:8501/oauth2callback`
+2. **Authorized redirect URIs**: add `http://localhost:8502/auth/callback`
    for local dev now; add your Railway URL's equivalent
-   (`https://<your-dashboard-url>/oauth2callback`) once that service is
+   (`https://<your-dashboard-url>/auth/callback`) once that service is
    deployed and its URL is known.
 3. **OAuth consent screen**: leave it in "Testing" mode with your own
    Google account added as a test user -- avoids Google's full app
    verification process, which is unnecessary for single-user access.
 4. Copy the **Client ID** and **Client Secret**.
 
-**Local dev** -- either works:
-- Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
-  (gitignored) and fill in the values directly, or
-- Set `AE_GOOGLE_CLIENT_ID` / `AE_GOOGLE_CLIENT_SECRET` /
-  `AE_AUTH_COOKIE_SECRET` in `.env` and let the dashboard generate
-  `.streamlit/secrets.toml` itself on first run (same idea as
-  `AE_TOKEN_SEED`'s bootstrap -- see below).
-
-`AE_AUTH_COOKIE_SECRET` signs the session cookie; generate one the same
-way as `AE_API_KEY`:
+**Local dev**: set `AE_GOOGLE_CLIENT_ID` / `AE_GOOGLE_CLIENT_SECRET` /
+`AE_WEB_SESSION_SECRET` in `.env`. `AE_WEB_SESSION_SECRET` signs the
+session cookie; generate one the same way as `AE_API_KEY`:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 If login isn't configured at all, the dashboard shows a clear setup
-message instead of the app (confirmed live -- Streamlit's `st.user`
-raises rather than just returning `False` when `[auth]` isn't configured).
+message instead of crashing.
 
-**On Railway**, once the dashboard has its own service (see "Deploying to
-Railway" below -- not yet set up as of this writing): set the same five
-`AE_GOOGLE_*` / `AE_AUTH_*` env vars there, using the Railway URL's
-`/oauth2callback` as `AE_AUTH_REDIRECT_URI` and adding that same URL to
-the Google Cloud Console redirect URIs from step 2 above.
+**On Railway**: set the same four `AE_GOOGLE_*` / `AE_WEB_*` /
+`AE_DASHBOARD_ALLOWED_EMAILS` env vars on the dashboard's service, using
+the Railway URL's `/auth/callback` as `AE_WEB_REDIRECT_URI` and adding
+that same URL to the Google Cloud Console redirect URIs from step 2
+above.
 
 ## Known gaps and modeling choices
 
@@ -541,7 +549,8 @@ URL), not the simpler shapes the API docs showed, so the test suite actually
 exercises the parsing this needed once real data arrived. Covers field
 parsing (including the edge cases above), envelope unwrapping across all
 three confirmed shapes, idempotent collection, pagination, momentum
-calculation, score weighting, and the OAuth token exchange/refresh flow,
-the HTTP API's auth behavior and its refresh-token route, plus a Streamlit
-`AppTest` smoke test that boots the actual dashboard against a seeded
-database.
+calculation, score weighting, the OAuth token exchange/refresh flow, the
+HTTP API's full route surface and auth behavior, and the web dashboard's
+login gate and page rendering against a seeded database (a real Google
+login can't be automated, so that part's a manual check -- see
+[Dashboard login](#dashboard-login-google-oauth)).

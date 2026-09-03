@@ -1,7 +1,7 @@
-"""Thin HTTP client the dashboard uses instead of touching SQLite directly
--- talks to the routes in aliexpress_dashboard/api/app.py. Method
-signatures mirror the old queries.py/momentum.py/shortlists.py functions
-so app.py barely changes.
+"""Thin HTTP client web/app.py uses instead of touching SQLite directly --
+talks to the routes in aliexpress_dashboard/api/app.py. Method signatures
+mirror the queries.py/momentum.py/shortlists.py functions those routes
+wrap server-side.
 """
 
 from __future__ import annotations
