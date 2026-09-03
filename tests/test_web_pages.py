@@ -63,6 +63,27 @@ def test_products_page_shows_seeded_products(client):
     assert "test@example.com" in response.text
 
 
+def test_products_page_tolerates_blank_filter_form_fields(client):
+    # An unset <select>/<input> in the filter form submits "", not an
+    # omitted param -- confirmed live this crashed with a 422 before
+    # category_id/min_price/etc. were parsed manually instead of relying
+    # on FastAPI's automatic Optional[int]/Optional[float] coercion.
+    response = client.get(
+        "/",
+        params={
+            "category_id": "",
+            "min_price": "",
+            "max_price": "",
+            "price_currency": "",
+            "min_rating": "",
+            "min_volume": "",
+            "ship_to_country": "",
+        },
+    )
+    assert response.status_code == 200
+    assert SEEDED_PRODUCT_TITLE in response.text
+
+
 def test_products_page_price_band_without_currency_shows_error_not_500(client):
     response = client.get("/", params={"min_price": 1})
     assert response.status_code == 200

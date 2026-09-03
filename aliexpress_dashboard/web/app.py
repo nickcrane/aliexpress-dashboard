@@ -91,6 +91,14 @@ def _records(df: pd.DataFrame) -> list:
     return df.replace({np.nan: None}).to_dict(orient="records")
 
 
+def _optional_int(value: Optional[str]) -> Optional[int]:
+    return int(value) if value else None
+
+
+def _optional_float(value: Optional[str]) -> Optional[float]:
+    return float(value) if value else None
+
+
 # ---------------------------------------------------------------- auth ----
 
 
@@ -130,12 +138,16 @@ def products_page(
     request: Request,
     email: str = Depends(require_login),
     client: ApiClient = Depends(get_api_client),
-    category_id: Optional[int] = None,
-    min_price: Optional[float] = None,
-    max_price: Optional[float] = None,
+    # Raw strings, not Optional[int]/Optional[float] -- an unset <select>/
+    # <input> in the filter form submits an empty string, which FastAPI's
+    # automatic type coercion rejects outright rather than treating as
+    # "not provided" (confirmed live). Parsed manually below instead.
+    category_id: Optional[str] = None,
+    min_price: Optional[str] = None,
+    max_price: Optional[str] = None,
     price_currency: Optional[str] = None,
-    min_rating: Optional[float] = None,
-    min_volume: Optional[int] = None,
+    min_rating: Optional[str] = None,
+    min_volume: Optional[str] = None,
     ship_to_country: Optional[str] = None,
     weight_volume: float = 25.0,
     weight_rating: float = 25.0,
@@ -143,14 +155,16 @@ def products_page(
     weight_price_fit: float = 25.0,
 ) -> HTMLResponse:
     error = None
+    price_currency = price_currency or None
+    ship_to_country = ship_to_country or None
     try:
         filters = ProductFilters(
-            category_id=category_id,
-            min_price=min_price,
-            max_price=max_price,
+            category_id=_optional_int(category_id),
+            min_price=_optional_float(min_price),
+            max_price=_optional_float(max_price),
             price_currency=price_currency,
-            min_rating=min_rating,
-            min_volume=min_volume,
+            min_rating=_optional_float(min_rating),
+            min_volume=_optional_int(min_volume),
             ship_to_country=ship_to_country,
         )
     except ValueError as exc:
