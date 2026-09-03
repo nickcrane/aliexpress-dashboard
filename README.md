@@ -380,9 +380,9 @@ assumption.
 ## HTTP API
 
 A small FastAPI service (`aliexpress_dashboard/api/`) for triggering tasks
-remotely — the intended use is letting one or more automation/agent tools
-(e.g. an OpenClaw assistant's scheduled job) call into this project without
-needing shell or file-system access to it. Currently one task:
+remotely — the intended use is letting one or more automation tools call
+into this project without needing shell or file-system access to it.
+Currently one task:
 `POST /refresh-token`, wrapping the OAuth refresh described above; more are
 expected to follow the same pattern (a route, the API-key dependency, a
 typed JSON response).
@@ -446,10 +446,40 @@ start command to `uvicorn aliexpress_dashboard.api.app:app --host 0.0.0.0
    ongoing overwrite, so it can't clobber a token that's since been refreshed
    on the volume. From then on, `POST /refresh-token` keeps the file current
    on its own; `AE_TOKEN_SEED` can be left in place (harmless) or removed.
-5. **Schedule the refresh** — from OpenClaw or Railway's own cron, hitting
-   `POST https://<your-railway-url>/refresh-token` with the `X-API-Key`
-   header roughly every 6 hours (see [Getting API credentials](#getting-api-credentials)
-   for why not exactly every 24).
+5. **Schedule the refresh** with a Railway Cron Job service (kept separate
+   from the dashboard service, so both can stay on Railway's serverless/
+   sleep-on-idle tier rather than paying for something to stay always-on
+   just to hold a timer):
+   - **New Railway service** in the same project → deploy from Docker image
+     `curlimages/curl:latest` (a minimal image with just `curl` in it, no
+     build needed).
+   - **Custom Start Command** — must be wrapped in `sh -c '...'`. Railway
+     executes a Custom Start Command directly (argv-form), *not* through a
+     shell, so bare `$VAR` references and `\n` escapes are passed through
+     literally instead of being expanded — confirmed live: an unwrapped
+     command sent the literal string `$AE_API_KEY` as the header value
+     instead of its expanded contents. Wrapping in `sh -c` forces real shell
+     processing:
+     ```
+     sh -c 'curl -sf -X POST -H "X-API-Key: $AE_API_KEY" https://<your-railway-url>/refresh-token'
+     ```
+   - **Cron Schedule** (Settings → Deploy): `0 */6 * * *` — roughly every 6
+     hours (see [Getting API credentials](#getting-api-credentials) for why
+     not exactly every 24).
+   - **Restart Policy**: `Never`. The container is meant to run `curl` once
+     and exit `0`; the default "Always" policy treats that clean exit as a
+     crash and restart-loops it, which Railway then surfaces as "Crashed"
+     even though nothing failed.
+   - **`AE_API_KEY` variable** on this service, matching the dashboard
+     service's value exactly. A cross-service reference
+     (`${{<dashboard-service-name>.AE_API_KEY}}`) works, but a manual
+     copy-paste through Railway's UI risks picking up invisible trailing
+     whitespace; if a request keeps getting rejected as unauthorized despite
+     the key "looking right," copying the value programmatically (e.g. via
+     `railway variables --json` rather than the reveal-and-copy UI) rules
+     that out.
+   - Test with a manual deploy before trusting the schedule — Railway's
+     "Deploy" button runs the job immediately regardless of the cron time.
 
 ## Testing
 
