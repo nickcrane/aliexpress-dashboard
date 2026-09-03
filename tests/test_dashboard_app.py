@@ -13,9 +13,16 @@ LAUNCHER = str(PROJECT_ROOT / "run_dashboard.py")
 
 
 @pytest.fixture(autouse=True)
-def _isolated_env(tmp_path, monkeypatch):
+def _isolated_env(tmp_path, monkeypatch, live_api_base_url):
+    # The dashboard now reads/writes through the HTTP API (live_api_base_url,
+    # from conftest.py) instead of touching AE_DB_PATH directly -- but both
+    # sides resolve Settings() from the same env vars, so pointing the API
+    # server's AE_DB_PATH here and the dashboard's AE_API_BASE_URL at it is
+    # enough to keep them talking about the same database.
     monkeypatch.setenv("AE_MODE", "fixture")
     monkeypatch.setenv("AE_DB_PATH", str(tmp_path / "dashboard-test.db"))
+    monkeypatch.setenv("AE_API_KEY", "test-dashboard-api-key")
+    monkeypatch.setenv("AE_API_BASE_URL", live_api_base_url)
     monkeypatch.delenv("AE_APP_KEY", raising=False)
     monkeypatch.delenv("AE_APP_SECRET", raising=False)
     return tmp_path

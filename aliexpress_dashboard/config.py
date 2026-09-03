@@ -81,6 +81,10 @@ class Settings:
     # request via the X-API-Key header. Unset means the API refuses all
     # requests (fail closed) rather than running open -- see api/security.py.
     api_key: str | None = field(default_factory=lambda: os.getenv("AE_API_KEY") or None)
+    # Where the dashboard finds the HTTP API it reads/writes through instead
+    # of touching AE_DB_PATH directly -- see dashboard/api_client.py. Not
+    # consumed by the API service itself or the collector CLI.
+    api_base_url: str = field(default_factory=lambda: os.getenv("AE_API_BASE_URL", "http://localhost:8000"))
 
     def __post_init__(self) -> None:
         if self.mode not in ("fixture", "live"):

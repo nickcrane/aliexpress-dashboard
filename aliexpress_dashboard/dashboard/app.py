@@ -11,28 +11,10 @@ import pandas as pd
 import streamlit as st
 
 from ..config import get_settings
-from ..db.connection import get_connection
-from ..db.migrate import run_migrations
+from .api_client import ApiClient
 from .export import to_csv_bytes, to_xlsx_bytes
-from .momentum import compute_momentum, load_observations_for_momentum
-from .queries import (
-    ProductFilters,
-    distinct_categories,
-    distinct_ship_to_countries,
-    distinct_target_currencies,
-    load_current_products,
-    load_price_history,
-    max_target_price,
-)
+from .queries import ProductFilters
 from .scoring import ScoreWeights, compute_composite_score
-from .shortlists import (
-    add_products_to_shortlist,
-    delete_shortlist,
-    get_or_create_shortlist,
-    list_shortlists,
-    load_shortlist_products,
-    remove_product_from_shortlist,
-)
 
 PRODUCT_TABLE_COLUMN_CONFIG = {
     "product_main_image_url": st.column_config.ImageColumn("Image"),
@@ -52,10 +34,11 @@ PRODUCT_TABLE_COLUMN_CONFIG = {
 }
 
 
-def _sidebar_filters(conn) -> ProductFilters:
-    category_ids = distinct_categories(conn)
-    currencies = distinct_target_currencies(conn)
-    ship_to_options = distinct_ship_to_countries(conn)
+def _sidebar_filters(client: ApiClient) -> ProductFilters:
+    filter_options = client.get_filters()
+    category_ids = filter_options.categories
+    currencies = filter_options.currencies
+    ship_to_options = filter_options.ship_to_countries
 
     st.header("Filters")
 
@@ -80,7 +63,7 @@ def _sidebar_filters(conn) -> ProductFilters:
 
     min_price = max_price = price_currency = None
     if currency:
-        price_ceiling = max(max_target_price(conn, currency) or 500.0, 1.0)
+        price_ceiling = max(client.max_target_price(currency) or 500.0, 1.0)
         min_price, max_price = st.slider(f"Price band ({currency})", 0.0, float(price_ceiling), (0.0, float(price_ceiling)))
         price_currency = currency
 
@@ -120,7 +103,7 @@ def _sidebar_score_weights() -> ScoreWeights:
     )
 
 
-def _render_products_tab(conn, df: pd.DataFrame) -> None:
+def _render_products_tab(client: ApiClient, df: pd.DataFrame) -> None:
     if df.empty:
         st.info(
             "No products match these filters yet. "
@@ -131,7 +114,7 @@ def _render_products_tab(conn, df: pd.DataFrame) -> None:
     display_df = df.reset_index(drop=True).copy()
     display_df["listing"] = display_df["product_url"]
 
-    price_history = load_price_history(conn, display_df["product_id"].tolist())
+    price_history = client.load_price_history(display_df["product_id"].tolist())
     display_df["price_history"] = display_df["product_id"].map(lambda pid: price_history.get(pid, []))
 
     weights = st.session_state["score_weights"]
@@ -181,8 +164,7 @@ def _render_products_tab(conn, df: pd.DataFrame) -> None:
         if not shortlist_name.strip():
             st.warning("Enter a shortlist name first.")
         else:
-            shortlist_id = get_or_create_shortlist(conn, shortlist_name.strip())
-            add_products_to_shortlist(conn, shortlist_id, selected_product_ids)
+            client.save_shortlist(shortlist_name.strip(), selected_product_ids)
             st.success(f"Added {len(selected_product_ids)} product(s) to shortlist '{shortlist_name.strip()}'.")
 
     col1, col2 = st.columns(2)
@@ -197,15 +179,14 @@ def _render_products_tab(conn, df: pd.DataFrame) -> None:
         )
 
 
-def _render_momentum_tab(conn, df: pd.DataFrame) -> None:
+def _render_momentum_tab(client: ApiClient, df: pd.DataFrame) -> None:
     if df.empty:
         st.info("No products match the current filters, so there's nothing to show momentum for.")
         return
 
     window_days = st.number_input("Rolling window (days)", min_value=1, value=14, step=1)
 
-    observations = load_observations_for_momentum(conn, df["product_id"].tolist())
-    momentum = compute_momentum(observations, window_days=window_days)
+    momentum = client.get_momentum(df["product_id"].tolist(), window_days=window_days)
 
     if momentum.empty or momentum["volume_change"].isna().all():
         st.info(
@@ -254,8 +235,8 @@ def _render_momentum_tab(conn, df: pd.DataFrame) -> None:
     )
 
 
-def _render_shortlists_tab(conn) -> None:
-    shortlists = list_shortlists(conn)
+def _render_shortlists_tab(client: ApiClient) -> None:
+    shortlists = client.list_shortlists()
     if not shortlists:
         st.info("No shortlists yet. Select some products in the Products tab and save a shortlist.")
         return
@@ -264,7 +245,7 @@ def _render_shortlists_tab(conn) -> None:
     chosen_label = st.selectbox("Shortlist", options=list(options.keys()))
     shortlist = options[chosen_label]
 
-    products = load_shortlist_products(conn, shortlist.id)
+    products = client.load_shortlist_products(shortlist.id)
 
     if products.empty:
         st.info("This shortlist is empty.")
@@ -321,11 +302,11 @@ def _render_shortlists_tab(conn) -> None:
                 key="remove_product_select",
             )
             if st.button("Remove"):
-                remove_product_from_shortlist(conn, shortlist.id, to_remove)
+                client.remove_product_from_shortlist(shortlist.id, to_remove)
                 st.rerun()
     with delete_col:
         if st.button(f"Delete shortlist '{shortlist.name}'", type="secondary"):
-            delete_shortlist(conn, shortlist.id)
+            client.delete_shortlist(shortlist.id)
             st.rerun()
 
 
@@ -333,27 +314,26 @@ def main() -> None:
     st.set_page_config(page_title="AliExpress Product Research", layout="wide")
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    run_migrations(conn)
+    client = ApiClient(base_url=settings.api_base_url, api_key=settings.api_key)
 
     st.title("AliExpress Product Research")
-    st.caption(f"Mode: {settings.mode} · Database: {settings.db_path}")
+    st.caption(f"Mode: {settings.mode} · API: {settings.api_base_url}")
 
     with st.sidebar:
-        filters = _sidebar_filters(conn)
+        filters = _sidebar_filters(client)
         st.divider()
         st.session_state["score_weights"] = _sidebar_score_weights()
 
-    df = load_current_products(conn, filters)
+    df = client.load_current_products(filters)
     st.subheader(f"{len(df)} product{'s' if len(df) != 1 else ''}")
 
     tab_products, tab_momentum, tab_shortlists = st.tabs(["Products", "Momentum", "Shortlists"])
     with tab_products:
-        _render_products_tab(conn, df)
+        _render_products_tab(client, df)
     with tab_momentum:
-        _render_momentum_tab(conn, df)
+        _render_momentum_tab(client, df)
     with tab_shortlists:
-        _render_shortlists_tab(conn)
+        _render_shortlists_tab(client)
 
 
 if __name__ == "__main__":
