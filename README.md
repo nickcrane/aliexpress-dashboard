@@ -276,6 +276,53 @@ fit is modeled as *cheaper within your filtered band scores higher*; if you
 want "fit" to mean something else (e.g. closest to the middle of the band),
 that's a one-function change in `aliexpress_dashboard/dashboard/scoring.py`.
 
+## Dashboard login (Google OAuth)
+
+The dashboard is gated behind Google login (`aliexpress_dashboard/dashboard/auth.py`)
+via Streamlit's native OIDC support (`st.login`/`st.logout`/`st.user` --
+not a third-party proxy). Login proves *who* you are; a separate
+`AE_DASHBOARD_ALLOWED_EMAILS` allowlist decides whether that person is
+actually allowed to see it, since any Google account could otherwise sign
+in.
+
+**One-time setup, in Google Cloud Console:**
+
+1. APIs & Services → Credentials → **Create OAuth 2.0 Client ID** (type:
+   Web application).
+2. **Authorized redirect URIs**: add `http://localhost:8501/oauth2callback`
+   for local dev now; add your Railway URL's equivalent
+   (`https://<your-dashboard-url>/oauth2callback`) once that service is
+   deployed and its URL is known.
+3. **OAuth consent screen**: leave it in "Testing" mode with your own
+   Google account added as a test user -- avoids Google's full app
+   verification process, which is unnecessary for single-user access.
+4. Copy the **Client ID** and **Client Secret**.
+
+**Local dev** -- either works:
+- Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
+  (gitignored) and fill in the values directly, or
+- Set `AE_GOOGLE_CLIENT_ID` / `AE_GOOGLE_CLIENT_SECRET` /
+  `AE_AUTH_COOKIE_SECRET` in `.env` and let the dashboard generate
+  `.streamlit/secrets.toml` itself on first run (same idea as
+  `AE_TOKEN_SEED`'s bootstrap -- see below).
+
+`AE_AUTH_COOKIE_SECRET` signs the session cookie; generate one the same
+way as `AE_API_KEY`:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+If login isn't configured at all, the dashboard shows a clear setup
+message instead of the app (confirmed live -- Streamlit's `st.user`
+raises rather than just returning `False` when `[auth]` isn't configured).
+
+**On Railway**, once the dashboard has its own service (see "Deploying to
+Railway" below -- not yet set up as of this writing): set the same five
+`AE_GOOGLE_*` / `AE_AUTH_*` env vars there, using the Railway URL's
+`/oauth2callback` as `AE_AUTH_REDIRECT_URI` and adding that same URL to
+the Google Cloud Console redirect URIs from step 2 above.
+
 ## Known gaps and modeling choices
 
 Things worth knowing before you trust a number this tool shows you. Each is

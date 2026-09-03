@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from ..config import get_settings
+from . import auth
 from .api_client import ApiClient
 from .export import to_csv_bytes, to_xlsx_bytes
 from .queries import ProductFilters
@@ -314,6 +315,9 @@ def main() -> None:
     st.set_page_config(page_title="AliExpress Product Research", layout="wide")
 
     settings = get_settings()
+    auth.ensure_secrets_file(settings)
+    auth.require_login(settings)
+
     client = ApiClient(base_url=settings.api_base_url, api_key=settings.api_key)
 
     st.title("AliExpress Product Research")

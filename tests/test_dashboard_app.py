@@ -5,11 +5,20 @@ from aliexpress_dashboard.client.ali_client import AliClient
 from aliexpress_dashboard.collector import store
 from aliexpress_dashboard.collector.runner import run_collection
 from aliexpress_dashboard.config import PROJECT_ROOT, Settings
-from aliexpress_dashboard.dashboard import shortlists
+from aliexpress_dashboard.dashboard import auth, shortlists
 from aliexpress_dashboard.db.connection import get_connection
 from aliexpress_dashboard.db.migrate import run_migrations
 
 LAUNCHER = str(PROJECT_ROOT / "run_dashboard.py")
+
+
+@pytest.fixture(autouse=True)
+def _bypass_login_gate(monkeypatch):
+    # These tests are about dashboard functionality, not the login gate
+    # itself (that's tests/test_dashboard_auth.py, and needs no real Google
+    # OAuth round trip to verify).
+    monkeypatch.setattr(auth, "ensure_secrets_file", lambda settings: None)
+    monkeypatch.setattr(auth, "require_login", lambda settings: None)
 
 
 @pytest.fixture(autouse=True)
