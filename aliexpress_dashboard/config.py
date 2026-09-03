@@ -100,6 +100,18 @@ class Settings:
     dashboard_allowed_emails: str = field(
         default_factory=lambda: os.getenv("AE_DASHBOARD_ALLOWED_EMAILS", "nic.crane@gmail.com")
     )
+    # Signs the Bootstrap web app's session cookie (web/app.py) -- a
+    # separate secret from auth_cookie_secret since it's a different cookie
+    # mechanism (Starlette SessionMiddleware vs. Streamlit's own auth).
+    # Generate the same way as AE_API_KEY.
+    web_session_secret: str | None = field(default_factory=lambda: os.getenv("AE_WEB_SESSION_SECRET") or None)
+    # Reuses the same Google OAuth client as auth_redirect_uri, just a
+    # different callback path -- both need registering in Google Cloud
+    # Console. Different local port than Streamlit's 8501 so both can run
+    # side by side during the transition.
+    web_redirect_uri: str = field(
+        default_factory=lambda: os.getenv("AE_WEB_REDIRECT_URI", "http://localhost:8502/auth/callback")
+    )
 
     def __post_init__(self) -> None:
         if self.mode not in ("fixture", "live"):

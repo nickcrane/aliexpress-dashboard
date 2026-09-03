@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-center">
+  <div class="card mt-5" style="max-width: 28rem; width: 100%;">
+    <div class="card-body text-center p-4">
+      <h1 class="h4 mb-3">Not authorized</h1>
+      <p class="text-body-secondary mb-4">
+        {% if email %}{{ email }} isn't{% else %}This account isn't{% endif %}
+        authorized to view this dashboard.
+      </p>
+      <a href="/logout" class="btn btn-outline-secondary w-100">Log out</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

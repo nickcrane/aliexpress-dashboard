@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">{{ products|length }} product{{ 's' if products|length != 1 else '' }}</h1>
+  <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#filtersPanel" aria-controls="filtersPanel">
+    Filters
+  </button>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row">
+  <div class="offcanvas-lg offcanvas-start col-lg-3" tabindex="-1" id="filtersPanel" aria-labelledby="filtersPanelLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="filtersPanelLabel">Filters</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#filtersPanel" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body d-block">
+      <form method="get" action="/">
+        <div class="mb-3">
+          <label class="form-label" for="price_currency">Currency</label>
+          <select class="form-select" id="price_currency" name="price_currency">
+            <option value="">Any</option>
+            {% for c in filter_options.currencies %}
+            <option value="{{ c }}" {% if filters.price_currency == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="category_id">Category</label>
+          <select class="form-select" id="category_id" name="category_id">
+            <option value="">All categories</option>
+            {% for cid in filter_options.categories %}
+            <option value="{{ cid }}" {% if filters.category_id == cid %}selected{% endif %}>Category {{ cid }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">ds.* doesn't return a category name, only an id.</div>
+        </div>
+        <div class="row mb-3">
+          <div class="col">
+            <label class="form-label" for="min_price">Min price</label>
+            <input type="number" step="0.01" min="0" class="form-control" id="min_price" name="min_price" value="{{ filters.min_price if filters.min_price is not none else '' }}">
+          </div>
+          <div class="col">
+            <label class="form-label" for="max_price">Max price</label>
+            <input type="number" step="0.01" min="0" class="form-control" id="max_price" name="max_price" value="{{ filters.max_price if filters.max_price is not none else '' }}">
+          </div>
+        </div>
+        {% if price_ceiling %}
+        <div class="form-text mb-3">Highest price currently in this currency: {{ "%.2f"|format(price_ceiling) }}</div>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label" for="min_rating">Minimum rating (%)</label>
+          <input type="number" min="0" max="100" class="form-control" id="min_rating" name="min_rating" value="{{ filters.min_rating if filters.min_rating is not none else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="min_volume">Minimum sales volume</label>
+          <input type="number" min="0" class="form-control" id="min_volume" name="min_volume" value="{{ filters.min_volume if filters.min_volume is not none else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="ship_to_country">Ship to country</label>
+          <select class="form-select" id="ship_to_country" name="ship_to_country">
+            <option value="">Any</option>
+            {% for c in filter_options.ship_to_countries %}
+            <option value="{{ c }}" {% if filters.ship_to_country == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <hr>
+        <h6>Score weights</h6>
+        <p class="text-body-secondary small">Composite score = weighted blend of these four, ranked relative to the products currently shown.</p>
+        <div class="mb-2">
+          <label class="form-label d-flex justify-content-between" for="weight_volume">Sales volume <span>{{ weights.volume|int }}</span></label>
+          <input type="range" class="form-range" min="0" max="100" id="weight_volume" name="weight_volume" value="{{ weights.volume|int }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label d-flex justify-content-between" for="weight_rating">Rating <span>{{ weights.rating|int }}</span></label>
+          <input type="range" class="form-range" min="0" max="100" id="weight_rating" name="weight_rating" value="{{ weights.rating|int }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label d-flex justify-content-between" for="weight_review_count">Review count <span>{{ weights.review_count|int }}</span></label>
+          <input type="range" class="form-range" min="0" max="100" id="weight_review_count" name="weight_review_count" value="{{ weights.review_count|int }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label d-flex justify-content-between" for="weight_price_fit">Price fit (lower price wins) <span>{{ weights.price_fit|int }}</span></label>
+          <input type="range" class="form-range" min="0" max="100" id="weight_price_fit" name="weight_price_fit" value="{{ weights.price_fit|int }}">
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Apply filters</button>
+        <a href="/" class="btn btn-link w-100">Clear</a>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-9">
+    {% if not products %}
+    <div class="alert alert-info">No products match these filters yet. Loosen the filters, or run the collector.</div>
+    {% else %}
+    <form method="post" action="/shortlists">
+      <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-3">
+        {% for p in products %}
+        <div class="col">
+          <div class="card h-100">
+            {% if p.product_main_image_url %}
+            <img src="{{ p.product_main_image_url }}" class="card-img-top" alt="" style="aspect-ratio: 1; object-fit: cover;">
+            {% endif %}
+            <div class="card-body d-flex flex-column">
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" name="product_ids" value="{{ p.product_id }}" id="p{{ p.product_id }}">
+                <label class="form-check-label h6" for="p{{ p.product_id }}">{{ p.product_title }}</label>
+              </div>
+              <p class="card-text mb-1">
+                <strong>{{ "%.2f"|format(p.target_sale_price) if p.target_sale_price is not none else "?" }} {{ p.target_sale_price_currency or "" }}</strong>
+                {% if p.discount %}<span class="badge text-bg-success ms-1">-{{ p.discount|int }}%</span>{% endif %}
+              </p>
+              <p class="card-text small text-body-secondary mb-1">
+                {% if p.evaluate_rate is not none %}Rating: {{ "%.1f"|format(p.evaluate_rate) }}%{% else %}Rating: &ndash;{% endif %}
+                &middot;
+                Volume: {{ p.sales_volume_display or p.sales_volume or 0 }}
+              </p>
+              {% if p.score is not none %}
+              <p class="card-text small mb-2">Score: <strong>{{ "%.1f"|format(p.score) }}</strong></p>
+              {% endif %}
+              <a href="{{ p.product_url }}" target="_blank" rel="noopener" class="small mt-auto">View listing &rarr;</a>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-sm">
+              <label class="form-label" for="shortlistName">Save selected to shortlist</label>
+              <input type="text" class="form-control" id="shortlistName" name="name" placeholder="e.g. Q1 candidates" required>
+            </div>
+            <div class="col-12 col-sm-auto">
+              <button type="submit" class="btn btn-primary w-100">Save selected</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
