@@ -50,8 +50,28 @@ export default defineRailway(() => {
     deploy: { cronSchedule: "0 6 * * *", restartPolicyType: "NEVER" },
     env: { AE_API_KEY: preserve() },
   });
+  const aliexpressCategorySyncCron = service("aliexpress-category-sync-cron", {
+    // Categories change far less often than products, so this runs weekly
+    // rather than sharing the daily collector schedule -- see
+    // aliexpress_dashboard/collector/runner.py:sync_categories.
+    source: image("curlimages/curl:latest"),
+    start: "sh -c 'curl -sf -X POST -H \"X-API-Key: $AE_API_KEY\" https://aliexpress-dashboard-production.up.railway.app/sync-categories'",
+    replicas: { "us-west2": 1 },
+    deploy: { cronSchedule: "0 4 * * 1", restartPolicyType: "NEVER" },
+    // References the dashboard service's own AE_API_KEY rather than a
+    // literal or a second preserve() slot, so this key exists in exactly
+    // one place instead of needing to be kept in sync across services.
+    env: { AE_API_KEY: aliexpressDashboard.env.AE_API_KEY },
+  });
 
   return project("zestful-cooperation", {
-    resources: [aliexpressDashboard, aliexpressApiTokenRefreshCron, aliexpressDashboardUi, aliexpressCollectorCron, aliexpressDashboardVolume],
+    resources: [
+      aliexpressDashboard,
+      aliexpressApiTokenRefreshCron,
+      aliexpressDashboardUi,
+      aliexpressCollectorCron,
+      aliexpressCategorySyncCron,
+      aliexpressDashboardVolume,
+    ],
   });
 });
