@@ -1,0 +1,23 @@
+# Builds web-m3 (Vite/React) and serves it through
+# aliexpress_dashboard/spa/app.py, which also proxies its API calls
+# server-side so the AliExpress API key never reaches the browser bundle.
+# Two languages in one deploy is why this is a hand-written Dockerfile
+# rather than Railpack's auto-detected build (which picks one provider per
+# service root, not both).
+
+FROM node:22-slim AS webbuild
+WORKDIR /build/web-m3
+COPY web-m3/package.json web-m3/package-lock.json ./
+RUN npm ci
+COPY web-m3/ ./
+RUN npm run build
+
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY aliexpress_dashboard/ ./aliexpress_dashboard/
+COPY --from=webbuild /build/web-m3/dist ./web-m3/dist
+
+ENV PORT=8080
+CMD ["sh", "-c", "uvicorn aliexpress_dashboard.spa.app:app --host 0.0.0.0 --port $PORT"]

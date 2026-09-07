@@ -14,6 +14,12 @@
       "port": 8502
     },
     {
+      "name": "spa",
+      "runtimeExecutable": "/Users/nick/Dev/aliexpress-dashboard/.venv/bin/uvicorn",
+      "runtimeArgs": ["aliexpress_dashboard.spa.app:app", "--port", "8503"],
+      "port": 8503
+    },
+    {
       "name": "web-m3",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "web-m3", "run", "dev"],

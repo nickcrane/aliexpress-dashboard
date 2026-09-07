@@ -1,8 +1,11 @@
-// Talks directly to aliexpress_dashboard/api/app.py -- same endpoints
-// dashboard/api_client.py calls, just fetch/TS instead of httpx/Python.
-// The API key here is a build-time env var baked into the JS bundle:
-// fine for this local-only test hitting a local/fixture-mode API, never
-// something to ship like this to a real deployment (see README).
+// Talks to aliexpress_dashboard/spa/app.py's /api/* proxy, which forwards
+// to aliexpress_dashboard/api/app.py with the AliExpress API key attached
+// server-side -- the key never reaches this bundle. Each request instead
+// carries the signed-in user's Firebase ID token; the proxy verifies it
+// and checks the same email allowlist the Bootstrap app uses. Defaults to
+// a same-origin relative path since the SPA and its proxy are served from
+// the same service in production; vite.config.ts forwards that path to a
+// local proxy instance in dev (see web-m3/README.md).
 import type {
   FilterOptions,
   MomentumRow,
@@ -10,15 +13,16 @@ import type {
   ProductFilters,
   ShortlistSummary,
 } from "./types";
+import { auth } from "./firebase";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
-const API_KEY = import.meta.env.VITE_API_KEY as string;
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "/api";
 
 async function fetchOnce(path: string, options: RequestInit): Promise<Response> {
+  const token = await auth?.currentUser?.getIdToken();
   return fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      "X-API-Key": API_KEY,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
     },

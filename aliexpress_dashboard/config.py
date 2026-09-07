@@ -109,6 +109,13 @@ class Settings:
     # server-side callers (web/app.py, the collector) hit it; this exists
     # for local frontend experiments that call it straight from a browser.
     cors_allowed_origins: str = field(default_factory=lambda: os.getenv("AE_CORS_ALLOWED_ORIGINS", ""))
+    # Firebase project the M3 SPA's login tokens must come from -- see
+    # spa/security.py. Same value as web-m3's VITE_FIREBASE_PROJECT_ID; not
+    # secret (Firebase project IDs are meant to be public), but required so
+    # a token minted by a *different* Firebase project can't be replayed
+    # here. Unset means the SPA's API proxy fails closed, same reasoning as
+    # AE_API_KEY in api/security.py.
+    firebase_project_id: str | None = field(default_factory=lambda: os.getenv("AE_FIREBASE_PROJECT_ID") or None)
 
     def __post_init__(self) -> None:
         if self.mode not in ("fixture", "live"):
