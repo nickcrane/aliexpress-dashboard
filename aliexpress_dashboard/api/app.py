@@ -30,7 +30,7 @@ from aliexpress_api.errors.exceptions import ApiRequestException, ApiRequestResp
 from ..client.ali_client import AliClient
 from ..client.errors import TokenMissingError
 from ..collector import store
-from ..collector.runner import run_collection
+from ..collector.runner import run_collection, sync_categories
 from ..config import Settings, get_settings
 from ..dashboard.momentum import compute_momentum, load_observations_for_momentum
 from ..dashboard.queries import (
@@ -128,6 +128,16 @@ def collect(
         "records_written": summary.records_written,
         "errors": summary.errors,
     }
+
+
+@app.post("/sync-categories", dependencies=[Depends(require_api_key)])
+def sync_categories_route(
+    settings: Settings = Depends(get_settings),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    client = AliClient(settings)
+    count = sync_categories(conn, client)
+    return {"status": "ok", "categories_synced": count}
 
 
 @app.get("/products", dependencies=[Depends(require_api_key)])

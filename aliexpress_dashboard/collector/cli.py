@@ -5,6 +5,7 @@
     python -m aliexpress_dashboard.collector.cli run [--search NAME]
     python -m aliexpress_dashboard.collector.cli authorize [--code CODE]
     python -m aliexpress_dashboard.collector.cli refresh-token
+    python -m aliexpress_dashboard.collector.cli sync-categories
 
 Safe to invoke repeatedly on a schedule (cron, launchd, APScheduler, ...):
 each invocation opens the database, applies any pending migrations, creates
@@ -25,7 +26,7 @@ from ..config import get_settings
 from ..db.connection import get_connection
 from ..db.migrate import run_migrations
 from . import store
-from .runner import run_collection
+from .runner import run_collection, sync_categories
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("refresh-token", help="Refresh the stored access token using the saved refresh token")
+
+    subparsers.add_parser(
+        "sync-categories", help="Fetch the AliExpress category tree and store id -> name/parent lookups"
+    )
 
     return parser
 
@@ -165,6 +170,13 @@ def _cmd_refresh_token(settings) -> int:
     return 0
 
 
+def _cmd_sync_categories(conn, settings) -> int:
+    client = AliClient(settings)
+    count = sync_categories(conn, client)
+    print(f"Synced {count} categories")
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -185,6 +197,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return _cmd_list_searches(conn)
     if args.command == "run":
         return _cmd_run(args, conn, settings)
+    if args.command == "sync-categories":
+        return _cmd_sync_categories(conn, settings)
 
     return 0
 

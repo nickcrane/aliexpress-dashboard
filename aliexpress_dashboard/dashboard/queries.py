@@ -11,6 +11,8 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from .categories import category_display, load_category_paths
+
 
 @dataclass
 class ProductFilters:
@@ -56,14 +58,21 @@ _CURRENT_PRODUCTS_SQL = """
 """
 
 
-def distinct_categories(conn: sqlite3.Connection) -> List[int]:
-    """Category IDs seen in collected products. No name is available to
-    show alongside them -- neither ds.* endpoint this app calls returns a
-    category name, only category_id (see AliClient.get_categories)."""
+def distinct_categories(conn: sqlite3.Connection) -> List[dict]:
+    """Category ids seen in collected products, each paired with its name
+    and full parent lineage via the `categories` table (see
+    dashboard/categories.py) -- falls back to a synthetic "Category <id>"
+    label for any id categories hasn't been synced for yet."""
     rows = conn.execute(
         "SELECT DISTINCT category_id FROM products WHERE category_id IS NOT NULL ORDER BY category_id"
     ).fetchall()
-    return [row["category_id"] for row in rows]
+    paths = load_category_paths(conn)
+    result = []
+    for row in rows:
+        category_id = row["category_id"]
+        name, path = category_display(category_id, paths)
+        result.append({"category_id": category_id, "category_name": name, "category_path": path})
+    return result
 
 
 def distinct_ship_to_countries(conn: sqlite3.Connection) -> List[str]:
@@ -150,4 +159,14 @@ def load_current_products(conn: sqlite3.Connection, filters: ProductFilters) -> 
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY p.last_seen_at DESC"
 
-    return pd.read_sql_query(sql, conn, params=params)
+    df = pd.read_sql_query(sql, conn, params=params)
+    paths = load_category_paths(conn)
+    # A nullable INTEGER column comes back from pandas as float64 (NaN for
+    # NULL rows), so category_id here can be e.g. 1503.0 -- normalize back
+    # to a plain int (or None) before using it as a categories dict key.
+    resolved = df["category_id"].apply(
+        lambda category_id: category_display(int(category_id) if pd.notna(category_id) else None, paths)
+    )
+    df["category_name"] = resolved.apply(lambda pair: pair[0])
+    df["category_path"] = resolved.apply(lambda pair: pair[1])
+    return df

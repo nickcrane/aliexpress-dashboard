@@ -9,13 +9,13 @@ from aliexpress_dashboard.db.migrate import run_migrations
 def test_migrations_apply_cleanly(tmp_path):
     conn = get_connection(tmp_path / "test.db")
     applied = run_migrations(conn)
-    assert applied == ["0001_initial.sql", "0002_shortlists.sql"]
+    assert applied == ["0001_initial.sql", "0002_shortlists.sql", "0003_categories.sql"]
 
     tables = {
         row["name"]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
-    assert {"searches", "runs", "products", "observations", "shortlists", "shortlist_items"} <= tables
+    assert {"searches", "runs", "products", "observations", "shortlists", "shortlist_items", "categories"} <= tables
 
 
 def test_migrations_are_idempotent(tmp_path):

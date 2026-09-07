@@ -101,8 +101,8 @@ export function FilterPanel({ filterOptions, filters, weights, priceCeiling, ope
             <div slot="headline">All categories</div>
           </md-select-option>
           {filterOptions.categories.map((c) => (
-            <md-select-option key={c} value={c.toString()}>
-              <div slot="headline">Category {c}</div>
+            <md-select-option key={c.category_id} value={c.category_id.toString()}>
+              <div slot="headline">{c.category_path ?? `Category ${c.category_id}`}</div>
             </md-select-option>
           ))}
         </md-outlined-select>

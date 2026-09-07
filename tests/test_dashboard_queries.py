@@ -1,6 +1,7 @@
 import pytest
 
 from aliexpress_dashboard.client.ali_client import AliClient
+from aliexpress_dashboard.client.models import NormalizedCategory
 from aliexpress_dashboard.collector import store
 from aliexpress_dashboard.collector.runner import run_collection
 from aliexpress_dashboard.config import Settings
@@ -77,7 +78,44 @@ def test_load_current_products_filters_by_ship_to_country(seeded_conn):
 
 
 def test_distinct_categories(seeded_conn):
-    assert set(distinct_categories(seeded_conn)) == {1503, 1509, 1512, 1520}
+    assert {c["category_id"] for c in distinct_categories(seeded_conn)} == {1503, 1509, 1512, 1520}
+
+
+def test_distinct_categories_falls_back_when_unsynced(seeded_conn):
+    # None of these ids have been synced into the categories table (no
+    # sync-categories run in this fixture) -- each still gets a usable
+    # label instead of erroring or coming back empty.
+    for c in distinct_categories(seeded_conn):
+        assert c["category_name"] == f"Category {c['category_id']}"
+        assert c["category_path"] == c["category_name"]
+
+
+def test_distinct_categories_resolves_name_and_lineage_once_synced(seeded_conn):
+    store.upsert_categories(
+        seeded_conn,
+        [
+            NormalizedCategory(category_id=15, category_name="Home & Garden", parent_category_id=None),
+            NormalizedCategory(category_id=1509, category_name="Kitchen Fixtures", parent_category_id=15),
+        ],
+    )
+    resolved = {c["category_id"]: c for c in distinct_categories(seeded_conn)}
+    assert resolved[1509]["category_name"] == "Kitchen Fixtures"
+    assert resolved[1509]["category_path"] == "Home & Garden > Kitchen Fixtures"
+    # Still unsynced -- unaffected by the sync above.
+    assert resolved[1503]["category_name"] == "Category 1503"
+
+
+def test_load_current_products_includes_category_name_and_path(seeded_conn):
+    store.upsert_categories(
+        seeded_conn,
+        [
+            NormalizedCategory(category_id=15, category_name="Home & Garden", parent_category_id=None),
+            NormalizedCategory(category_id=1509, category_name="Kitchen Fixtures", parent_category_id=15),
+        ],
+    )
+    df = load_current_products(seeded_conn, ProductFilters(category_id=1509))
+    assert (df["category_name"] == "Kitchen Fixtures").all()
+    assert (df["category_path"] == "Home & Garden > Kitchen Fixtures").all()
 
 
 def test_distinct_ship_to_countries(seeded_conn):

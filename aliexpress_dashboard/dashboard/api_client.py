@@ -30,7 +30,7 @@ _MOMENTUM_COLUMNS = [
 
 @dataclass
 class FilterOptions:
-    categories: List[int]
+    categories: List[dict]  # {category_id, category_name, category_path} -- see dashboard/categories.py
     currencies: List[str]
     ship_to_countries: List[str]
 

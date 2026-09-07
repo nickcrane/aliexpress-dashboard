@@ -135,6 +135,18 @@ def test_collect_runs_active_searches(tmp_path):
     assert body["records_written"] > 0
 
 
+def test_sync_categories_requires_api_key(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    assert client.post("/sync-categories").status_code == 401
+
+
+def test_sync_categories_stores_the_full_tree(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "post", "/sync-categories")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "categories_synced": 7}
+
+
 def test_products_returns_seeded_product(tmp_path):
     _seed_product(tmp_path)
     client = _client_with_settings(_settings(tmp_path))

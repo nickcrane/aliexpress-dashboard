@@ -6,6 +6,8 @@ export interface Product {
   product_main_image_url: string | null;
   product_url: string;
   category_id: number | null;
+  category_name: string | null;
+  category_path: string | null;
   target_sale_price: number | null;
   target_sale_price_currency: string | null;
   discount: number | null;
@@ -20,8 +22,14 @@ export interface Product {
   score?: number;
 }
 
+export interface CategoryOption {
+  category_id: number;
+  category_name: string | null;
+  category_path: string | null;
+}
+
 export interface FilterOptions {
-  categories: number[];
+  categories: CategoryOption[];
   currencies: string[];
   ship_to_countries: string[];
 }

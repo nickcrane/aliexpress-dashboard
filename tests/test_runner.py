@@ -5,7 +5,7 @@ import pytest
 
 from aliexpress_dashboard.client.ali_client import AliClient
 from aliexpress_dashboard.collector import store
-from aliexpress_dashboard.collector.runner import run_collection
+from aliexpress_dashboard.collector.runner import run_collection, sync_categories
 from aliexpress_dashboard.config import Settings
 from aliexpress_dashboard.db.connection import get_connection
 from aliexpress_dashboard.db.migrate import run_migrations
@@ -28,6 +28,16 @@ def client():
 def _add_search(conn, **kwargs):
     store.upsert_search(conn, **kwargs)
     return store.get_search_by_name(conn, kwargs["name"])
+
+
+def test_sync_categories_stores_the_full_tree(conn, client):
+    from aliexpress_dashboard.dashboard.categories import load_category_paths
+
+    count = sync_categories(conn, client)
+
+    assert count == 7  # matches tests/fixtures/categories.json
+    paths = load_category_paths(conn)
+    assert paths[1503].path == "Home & Garden > Lighting"
 
 
 def test_run_collection_writes_products_and_observations(conn, client):

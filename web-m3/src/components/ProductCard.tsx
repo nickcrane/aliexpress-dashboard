@@ -42,6 +42,11 @@ export function ProductCard({ product, selected = false, onToggle, showCheckbox 
           )}
           <h3 style={{ margin: 0, fontSize: "0.95rem", lineHeight: 1.3 }}>{product.product_title}</h3>
         </div>
+        {product.category_path && (
+          <div style={{ fontSize: "0.75rem", color: "var(--md-sys-color-on-surface-variant)" }}>
+            {product.category_path}
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <strong>
             {product.target_sale_price?.toFixed(2) ?? "?"} {product.target_sale_price_currency ?? ""}

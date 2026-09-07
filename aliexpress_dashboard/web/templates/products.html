@@ -33,11 +33,10 @@
           <label class="form-label" for="category_id">Category</label>
           <select class="form-select" id="category_id" name="category_id">
             <option value="">All categories</option>
-            {% for cid in filter_options.categories %}
-            <option value="{{ cid }}" {% if filters.category_id == cid %}selected{% endif %}>Category {{ cid }}</option>
+            {% for c in filter_options.categories %}
+            <option value="{{ c.category_id }}" {% if filters.category_id == c.category_id %}selected{% endif %}>{{ c.category_path }}</option>
             {% endfor %}
           </select>
-          <div class="form-text">ds.* doesn't return a category name, only an id.</div>
         </div>
         <div class="row mb-3">
           <div class="col">

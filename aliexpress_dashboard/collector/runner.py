@@ -83,6 +83,16 @@ def _fetch_all_pages(client: AliClient, params: SearchParams) -> SearchResult:
     )
 
 
+def sync_categories(conn: sqlite3.Connection, client: AliClient) -> int:
+    """Fetches the full AliExpress category tree and upserts it into the
+    `categories` table (see store.upsert_categories). Categories change far
+    less often than collected products, so this runs on its own schedule
+    (or on demand), separate from run_collection."""
+    categories = client.get_categories()
+    store.upsert_categories(conn, categories)
+    return len(categories)
+
+
 def run_collection(
     conn: sqlite3.Connection,
     client: AliClient,

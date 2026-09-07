@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from ..client.models import NormalizedProduct, SearchParams
+from ..client.models import NormalizedCategory, NormalizedProduct, SearchParams
 
 
 def now_iso() -> str:
@@ -115,6 +115,28 @@ def load_active_searches(conn: sqlite3.Connection) -> List[SavedSearch]:
 def list_all_searches(conn: sqlite3.Connection) -> List[SavedSearch]:
     rows = conn.execute("SELECT * FROM searches ORDER BY id").fetchall()
     return [_row_to_saved_search(row) for row in rows]
+
+
+def upsert_categories(conn: sqlite3.Connection, categories: List[NormalizedCategory]) -> None:
+    """Replaces stored name/parent for each category, keyed on category_id
+    -- the full tree AliClient.get_categories() returns each sync, not an
+    incremental diff, so a plain upsert per row is enough."""
+    for category in categories:
+        conn.execute(
+            """
+            INSERT INTO categories (category_id, category_name, parent_category_id)
+            VALUES (:category_id, :category_name, :parent_category_id)
+            ON CONFLICT(category_id) DO UPDATE SET
+                category_name=excluded.category_name,
+                parent_category_id=excluded.parent_category_id
+            """,
+            {
+                "category_id": category.category_id,
+                "category_name": category.category_name,
+                "parent_category_id": category.parent_category_id,
+            },
+        )
+    conn.commit()
 
 
 def create_run(conn: sqlite3.Connection, *, mode: str) -> int:
