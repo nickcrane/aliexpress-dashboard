@@ -2,10 +2,22 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": "/Users/nick/Dev/aliexpress-dashboard/.venv/bin/uvicorn",
+      "runtimeArgs": ["aliexpress_dashboard.api.app:app", "--port", "8000"],
+      "port": 8000
+    },
+    {
       "name": "dashboard",
-      "runtimeExecutable": "/Users/nick/Dev/aliexpress-dashboard/.venv/bin/streamlit",
-      "runtimeArgs": ["run", "/Users/nick/Dev/aliexpress-dashboard/run_dashboard.py", "--server.headless", "true"],
-      "port": 8501
+      "runtimeExecutable": "/Users/nick/Dev/aliexpress-dashboard/.venv/bin/uvicorn",
+      "runtimeArgs": ["aliexpress_dashboard.web.app:app", "--port", "8502"],
+      "port": 8502
+    },
+    {
+      "name": "web-m3",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "web-m3", "run", "dev"],
+      "port": 5173
     }
   ]
 }
