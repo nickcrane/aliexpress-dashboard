@@ -1,0 +1,77 @@
+<!doctype html>
+<!--
+  Dev utility: generates the CSS custom properties in ../src/theme.css from
+  a seed color, using Google's own Material Color Utilities
+  (themeFromSourceColor) -- the same algorithm behind the Material Theme
+  Builder tool, not hand-picked hex values.
+
+  Run: `npm run dev`, then open
+  http://localhost:5173/scripts/generate-theme.html?seed=1591EA
+  (hex without '#'), copy the output into src/theme.css.
+
+  Plain `node` can't run this directly -- @material/material-color-utilities
+  ships with extensionless relative imports that only bundler-style
+  resolution (Vite's, here) handles; that's why this is a page Vite serves
+  rather than a node script.
+-->
+<html>
+<body style="font-family: monospace">
+<div>Seed: <input id="seed" /> <button id="go">Generate</button></div>
+<pre id="out"></pre>
+<script type="module">
+import { themeFromSourceColor, argbFromHex, hexFromArgb } from '@material/material-color-utilities';
+
+const roles = [
+  ['primary', 'primary'], ['onPrimary', 'on-primary'], ['primaryContainer', 'primary-container'], ['onPrimaryContainer', 'on-primary-container'],
+  ['secondary', 'secondary'], ['onSecondary', 'on-secondary'], ['secondaryContainer', 'secondary-container'], ['onSecondaryContainer', 'on-secondary-container'],
+  ['tertiary', 'tertiary'], ['onTertiary', 'on-tertiary'], ['tertiaryContainer', 'tertiary-container'], ['onTertiaryContainer', 'on-tertiary-container'],
+  ['error', 'error'], ['onError', 'on-error'], ['errorContainer', 'error-container'], ['onErrorContainer', 'on-error-container'],
+  ['background', 'background'], ['onBackground', 'on-background'],
+  ['surface', 'surface'], ['onSurface', 'on-surface'],
+  ['surfaceVariant', 'surface-variant'], ['onSurfaceVariant', 'on-surface-variant'],
+  ['outline', 'outline'], ['outlineVariant', 'outline-variant'],
+  ['inverseSurface', 'inverse-surface'], ['inverseOnSurface', 'inverse-on-surface'], ['inversePrimary', 'inverse-primary'],
+  ['scrim', 'scrim'], ['shadow', 'shadow'],
+];
+
+// This library's Scheme shape doesn't include the surface-container roles
+// -- standard M3 spec tones on the neutral palette, computed directly.
+const containerTones = {
+  'surface-container-lowest': [100, 4],
+  'surface-container-low': [96, 10],
+  'surface-container': [94, 12],
+  'surface-container-high': [92, 17],
+  'surface-container-highest': [90, 22],
+};
+
+function schemeToCss(scheme, indent = '  ') {
+  return roles.map(([key, css]) => `${indent}--md-sys-color-${css}: ${hexFromArgb(scheme[key])};`).join('\n');
+}
+
+function containerCss(theme, toneIndex, indent = '  ') {
+  return Object.entries(containerTones)
+    .map(([css, tones]) => `${indent}--md-sys-color-${css}: ${hexFromArgb(theme.palettes.neutral.tone(tones[toneIndex]))};`)
+    .join('\n');
+}
+
+function generate(seedHex) {
+  const theme = themeFromSourceColor(argbFromHex('#' + seedHex.replace(/^#/, '')));
+  const light = theme.schemes.light.toJSON ? theme.schemes.light.toJSON() : theme.schemes.light.props;
+  const dark = theme.schemes.dark.toJSON ? theme.schemes.dark.toJSON() : theme.schemes.dark.props;
+
+  return `:root {\n${schemeToCss(light)}\n${containerCss(theme, 0)}\n}\n\n` +
+    `@media (prefers-color-scheme: dark) {\n  :root {\n${schemeToCss(dark, '    ')}\n${containerCss(theme, 1, '    ')}\n  }\n}`;
+}
+
+const params = new URLSearchParams(location.search);
+const seedInput = document.getElementById('seed');
+seedInput.value = params.get('seed') || '1591EA';
+
+function run() {
+  document.getElementById('out').textContent = generate(seedInput.value);
+}
+document.getElementById('go').addEventListener('click', run);
+run();
+</script>
+</body>
+</html>
