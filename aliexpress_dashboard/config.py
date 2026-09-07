@@ -103,6 +103,12 @@ class Settings:
     web_redirect_uri: str = field(
         default_factory=lambda: os.getenv("AE_WEB_REDIRECT_URI", "http://localhost:8502/auth/callback")
     )
+    # Comma-separated browser origins allowed to call the API directly
+    # (Starlette CORSMiddleware, wired in api/app.py only when this is
+    # set). Empty by default -- the API has never needed CORS since only
+    # server-side callers (web/app.py, the collector) hit it; this exists
+    # for local frontend experiments that call it straight from a browser.
+    cors_allowed_origins: str = field(default_factory=lambda: os.getenv("AE_CORS_ALLOWED_ORIGINS", ""))
 
     def __post_init__(self) -> None:
         if self.mode not in ("fixture", "live"):

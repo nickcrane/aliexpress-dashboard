@@ -22,6 +22,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from aliexpress_api.errors.exceptions import ApiRequestException, ApiRequestResponseException
@@ -53,6 +54,15 @@ from .dependencies import get_db_connection
 from .security import require_api_key
 
 app = FastAPI(title="AliExpress Dashboard API", version="0.1.0")
+
+_cors_origins = [origin.strip() for origin in get_settings().cors_allowed_origins.split(",") if origin.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 def _records(df: pd.DataFrame) -> list:
