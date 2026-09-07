@@ -10,6 +10,21 @@ WORKDIR /build/web-m3
 COPY web-m3/package.json web-m3/package-lock.json ./
 RUN npm ci
 COPY web-m3/ ./
+# Vite inlines VITE_* vars into the bundle at build time, so they have to
+# be present for this `npm run build`, not just at container runtime --
+# Railway auto-passes a Dockerfile-built service's own env vars in as
+# build args of the same name, but only for ARGs actually declared here.
+# Not secret (see web-m3/README.md/.env.local.example): meant to be
+# public in a browser bundle, same class of value the seed color or the
+# Firebase project ID already are.
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ARG VITE_FIREBASE_APP_ID
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
+    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
+    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
+    VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 RUN npm run build
 
 FROM python:3.11-slim
