@@ -9,8 +9,13 @@ export default defineRailway(() => {
     env: { AE_API_KEY: preserve(), AE_APP_KEY: preserve(), AE_APP_SECRET: preserve(), AE_BACKOFF_BASE_SECONDS: preserve(), AE_BACKOFF_MAX_SECONDS: preserve(), AE_CALLBACK_URL: preserve(), AE_DB_PATH: preserve(), AE_FIXTURES_DIR: preserve(), AE_MAX_RETRIES: preserve(), AE_MIN_REQUEST_INTERVAL_SECONDS: preserve(), AE_MODE: preserve(), AE_SHIP_TO_COUNTRY: preserve(), AE_TARGET_CURRENCY: preserve(), AE_TARGET_LANGUAGE: preserve(), AE_TOKEN_PATH: preserve(), AE_TOKEN_SEED: preserve(), AE_TRACKING_ID: preserve() },
   });
   const aliexpressApiTokenRefreshCron = service("aliexpress-api-token-refresh-cron", {
+    // -f: confirmed live this was silently swallowing failures -- without
+    // it, curl exits 0 on a 502 same as on a 200, so a dead refresh
+    // token showed as "Completed" in Railway with nothing to notice it
+    // by. With -f, a failed refresh now surfaces as Crashed, matching
+    // the other two curl-image crons below.
     source: image("curlimages/curl:latest"),
-    start: "sh -c 'curl -s -w \"\\nHTTP_STATUS:%{http_code}\\n\" -X POST -H \"X-API-Key: $AE_API_KEY\" https://aliexpress-dashboard-production.up.railway.app/refresh-token'",
+    start: "sh -c 'curl -sf -X POST -H \"X-API-Key: $AE_API_KEY\" https://aliexpress-dashboard-production.up.railway.app/refresh-token'",
     replicas: { "us-west2": 1 },
     deploy: { cronSchedule: "0 */6 * * *", restartPolicyType: "NEVER" },
     networking: { privateNetworkEndpoint: "curl" },
