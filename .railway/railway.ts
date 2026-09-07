@@ -32,11 +32,15 @@ export default defineRailway(() => {
       AE_WEB_SESSION_SECRET: preserve(),
       // Consumed at Docker build time (Dockerfile.spa passes these through
       // as build args) to bake Vite's client-side Firebase config into the
-      // bundle -- not secret, matches web-m3/.env.local's VITE_FIREBASE_*.
-      VITE_FIREBASE_API_KEY: "***REMOVED-LEAKED-FIREBASE-API-KEY***",
-      VITE_FIREBASE_AUTH_DOMAIN: "aliexpressproductdashboard.firebaseapp.com",
-      VITE_FIREBASE_PROJECT_ID: "aliexpressproductdashboard",
-      VITE_FIREBASE_APP_ID: "1:658004606208:web:6684eca1f4ac7821b687e5",
+      // bundle. Already set directly on the Railway service -- preserve()
+      // rather than a literal here, so this file (committed to a public
+      // repo) doesn't itself become the thing search/scanning tools flag,
+      // even though Firebase's own model treats this object as safe to
+      // ship in a public browser bundle (unlike AE_API_KEY etc. above).
+      VITE_FIREBASE_API_KEY: preserve(),
+      VITE_FIREBASE_AUTH_DOMAIN: preserve(),
+      VITE_FIREBASE_PROJECT_ID: preserve(),
+      VITE_FIREBASE_APP_ID: preserve(),
     },
   });
   const aliexpressCollectorCron = service("aliexpress-collector-cron", {
