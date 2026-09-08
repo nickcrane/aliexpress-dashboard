@@ -9,7 +9,12 @@ from aliexpress_dashboard.db.migrate import run_migrations
 def test_migrations_apply_cleanly(tmp_path):
     conn = get_connection(tmp_path / "test.db")
     applied = run_migrations(conn)
-    assert applied == ["0001_initial.sql", "0002_shortlists.sql", "0003_categories.sql"]
+    assert applied == [
+        "0001_initial.sql",
+        "0002_shortlists.sql",
+        "0003_categories.sql",
+        "0004_category_ancestor_ids.sql",
+    ]
 
     tables = {
         row["name"]

@@ -171,6 +171,7 @@ _PRODUCT_COLUMNS = (
     "product_small_image_urls",
     "product_video_url",
     "category_id",
+    "category_ancestor_ids",
     "sale_price",
     "sale_price_currency",
     "original_price",
@@ -211,6 +212,7 @@ def upsert_product_and_observation(
 ) -> None:
     values = {col: getattr(product, col) for col in _PRODUCT_COLUMNS}
     values["product_small_image_urls"] = json.dumps(product.product_small_image_urls)
+    values["category_ancestor_ids"] = json.dumps(product.category_ancestor_ids)
     values["captured_at"] = captured_at
     values["run_id"] = run_id
 

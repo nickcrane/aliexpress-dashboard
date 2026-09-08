@@ -38,20 +38,36 @@ def _normalize_url(value: Optional[str]) -> Optional[str]:
     return value
 
 
-def parse_category_path(value: Any, *, field: str, product_id: Any) -> Optional[int]:
+def parse_category_ancestor_ids(value: Any, *, field: str, product_id: Any) -> List[int]:
     """cateId comes back as a comma-separated category path
     ("66,200001147,201674401,200001313": root to leaf), not a single id --
-    confirmed live, contradicting the docs' plain "Number" type. Takes the
-    last (most specific) segment, matching how the old affiliate API's more
-    specific "second level" category was the more useful one for filtering.
+    confirmed live, contradicting the docs' plain "Number" type. Keeps
+    every segment (not just the leaf) because AliExpress's category-name
+    lookup (get_categories) only covers a much broader/shallower tree
+    than real per-product leaf category ids -- confirmed live, a leaf id
+    alone resolves to a name only a small fraction of the time, while an
+    ancestor a level or two up usually does. See dashboard/categories.py.
     """
     if value is None:
-        return None
+        return []
     text = str(value).strip()
     if not text:
-        return None
-    last_segment = text.split(",")[-1].strip()
-    return parse_int(last_segment, field=field, product_id=product_id)
+        return []
+    ids = []
+    for segment in text.split(","):
+        parsed = parse_int(segment.strip(), field=field, product_id=product_id)
+        if parsed is not None:
+            ids.append(parsed)
+    return ids
+
+
+def parse_category_path(value: Any, *, field: str, product_id: Any) -> Optional[int]:
+    """The most specific (leaf) segment of cateId's root-to-leaf path --
+    matching how the old affiliate API's more specific "second level"
+    category was the more useful one for exact-match filtering. See
+    parse_category_ancestor_ids for the full path."""
+    ids = parse_category_ancestor_ids(value, field=field, product_id=product_id)
+    return ids[-1] if ids else None
 
 
 def parse_percent(value: Any, *, field: str, product_id: Any) -> Optional[float]:
@@ -170,6 +186,9 @@ def normalize_search_product(raw: Any, *, target_currency: str) -> NormalizedPro
         product_main_image_url=_str_or_none(get_field(raw, "itemMainPic")),
         product_video_url=_str_or_none(get_field(raw, "productVideoUrl")),
         category_id=parse_category_path(get_field(raw, "cateId"), field="cateId", product_id=product_id),
+        category_ancestor_ids=parse_category_ancestor_ids(
+            get_field(raw, "cateId"), field="cateId", product_id=product_id
+        ),
         sale_price=parse_price(get_field(raw, "salePrice"), field="salePrice", product_id=product_id),
         sale_price_currency=_str_or_none(get_field(raw, "salePriceCurrency")),
         original_price=parse_price(get_field(raw, "originalPrice"), field="originalPrice", product_id=product_id),
@@ -222,6 +241,10 @@ def normalize_detail_product(raw: Any, *, target_currency: str) -> NormalizedPro
     # currency was requested (unlike the search response's sale_price,
     # which stays in the seller's native currency regardless of request).
     sku_currency = _str_or_none(get_field(first_sku, "currency_code")) or target_currency
+    # Unlike the search response's cateId, this endpoint's category_id is
+    # a single leaf id with no ancestor path -- a length-1 path here is
+    # the most this normalizer can offer dashboard/categories.py.
+    detail_category_id = parse_int(get_field(base, "category_id"), field="category_id", product_id=product_id)
 
     return NormalizedProduct(
         product_id=product_id,
@@ -229,7 +252,8 @@ def normalize_detail_product(raw: Any, *, target_currency: str) -> NormalizedPro
         product_main_image_url=images[0] if images else None,
         product_small_image_urls=images,
         product_video_url=video_url,
-        category_id=parse_int(get_field(base, "category_id"), field="category_id", product_id=product_id),
+        category_id=detail_category_id,
+        category_ancestor_ids=[detail_category_id] if detail_category_id is not None else [],
         sale_price=parse_price(get_field(first_sku, "sku_price"), field="sku_price", product_id=product_id),
         sale_price_currency=sku_currency,
         target_sale_price=parse_price(

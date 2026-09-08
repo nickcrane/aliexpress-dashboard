@@ -5,9 +5,10 @@ can be unit tested without going through either.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -41,6 +42,7 @@ _CURRENT_PRODUCTS_SQL = """
         p.product_main_image_url,
         p.product_url,
         p.category_id,
+        p.category_ancestor_ids,
         p.target_sale_price,
         p.target_sale_price_currency,
         p.discount,
@@ -62,15 +64,25 @@ def distinct_categories(conn: sqlite3.Connection) -> List[dict]:
     """Category ids seen in collected products, each paired with its name
     and full parent lineage via the `categories` table (see
     dashboard/categories.py) -- falls back to a synthetic "Category <id>"
-    label for any id categories hasn't been synced for yet."""
+    label for any id (and its ancestors) categories hasn't been synced
+    for yet. One representative row's category_ancestor_ids per distinct
+    id is enough -- it's the same product-side path regardless of which
+    row happens to be picked."""
     rows = conn.execute(
-        "SELECT DISTINCT category_id FROM products WHERE category_id IS NOT NULL ORDER BY category_id"
+        """
+        SELECT category_id, MIN(category_ancestor_ids) AS category_ancestor_ids
+        FROM products
+        WHERE category_id IS NOT NULL
+        GROUP BY category_id
+        ORDER BY category_id
+        """
     ).fetchall()
     paths = load_category_paths(conn)
     result = []
     for row in rows:
         category_id = row["category_id"]
-        name, path = category_display(category_id, paths)
+        ancestor_ids = json.loads(row["category_ancestor_ids"]) if row["category_ancestor_ids"] else ()
+        name, path = category_display(category_id, paths, ancestor_ids)
         result.append({"category_id": category_id, "category_name": name, "category_path": path})
     return result
 
@@ -161,12 +173,25 @@ def load_current_products(conn: sqlite3.Connection, filters: ProductFilters) -> 
 
     df = pd.read_sql_query(sql, conn, params=params)
     paths = load_category_paths(conn)
-    # A nullable INTEGER column comes back from pandas as float64 (NaN for
-    # NULL rows), so category_id here can be e.g. 1503.0 -- normalize back
-    # to a plain int (or None) before using it as a categories dict key.
-    resolved = df["category_id"].apply(
-        lambda category_id: category_display(int(category_id) if pd.notna(category_id) else None, paths)
-    )
-    df["category_name"] = resolved.apply(lambda pair: pair[0])
-    df["category_path"] = resolved.apply(lambda pair: pair[1])
-    return df
+
+    def _resolve(row: pd.Series) -> Tuple[Optional[str], Optional[str]]:
+        # A nullable INTEGER column comes back from pandas as float64 (NaN
+        # for NULL rows), so category_id here can be e.g. 1503.0 --
+        # normalize back to a plain int (or None) before using it as a
+        # categories dict key.
+        category_id = int(row["category_id"]) if pd.notna(row["category_id"]) else None
+        raw_ancestors = row["category_ancestor_ids"]
+        ancestor_ids = json.loads(raw_ancestors) if isinstance(raw_ancestors, str) and raw_ancestors else ()
+        return category_display(category_id, paths, ancestor_ids)
+
+    if df.empty:
+        # DataFrame.apply(axis=1) on zero rows can't infer that _resolve
+        # returns a 2-tuple (it returns an empty DataFrame instead of a
+        # Series of tuples in that case), so handle it directly instead.
+        df["category_name"] = pd.Series(dtype=object)
+        df["category_path"] = pd.Series(dtype=object)
+    else:
+        resolved = df.apply(_resolve, axis=1)
+        df["category_name"] = resolved.apply(lambda pair: pair[0])
+        df["category_path"] = resolved.apply(lambda pair: pair[1])
+    return df.drop(columns=["category_ancestor_ids"])

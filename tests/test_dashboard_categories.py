@@ -74,6 +74,55 @@ def test_category_display_resolves_known_id(conn):
     assert category_display(1503, paths) == ("Lighting", "Home & Garden > Lighting")
 
 
+def test_category_display_falls_back_through_ancestor_chain(conn):
+    # The realistic case this whole thing exists for: AliExpress's
+    # category lookup covers the root (30 "Security & Protection") but
+    # not the deep leaf id a real product is actually tagged with.
+    store.upsert_categories(conn, [NormalizedCategory(category_id=30, category_name="Security & Protection")])
+    paths = load_category_paths(conn)
+    ancestor_ids = [30, 202245601, 200004311, 200332166]  # leaf (200332166) unresolved
+    assert category_display(200332166, paths, ancestor_ids) == (
+        "Security & Protection",
+        "Security & Protection",
+    )
+
+
+def test_category_display_prefers_the_most_specific_resolvable_ancestor(conn):
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=44, category_name="Consumer Electronics"),
+            NormalizedCategory(category_id=200003803, category_name="Smart Electronics", parent_category_id=44),
+        ],
+    )
+    paths = load_category_paths(conn)
+    ancestor_ids = [44, 200003803, 200099999]  # leaf (200099999) unresolved, its parent is
+    assert category_display(200099999, paths, ancestor_ids) == (
+        "Smart Electronics",
+        "Consumer Electronics > Smart Electronics",
+    )
+
+
+def test_category_display_tries_leaf_before_ancestors(conn):
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=44, category_name="Consumer Electronics"),
+            NormalizedCategory(category_id=1503, category_name="Lighting", parent_category_id=44),
+        ],
+    )
+    paths = load_category_paths(conn)
+    assert category_display(1503, paths, [44, 1503]) == ("Lighting", "Consumer Electronics > Lighting")
+
+
+def test_category_display_falls_back_when_no_ancestor_resolves_either(conn):
+    paths = load_category_paths(conn)  # nothing synced at all
+    assert category_display(200332166, paths, [30, 202245601, 200332166]) == (
+        "Category 200332166",
+        "Category 200332166",
+    )
+
+
 def test_upsert_categories_is_idempotent_and_updates_in_place(conn):
     store.upsert_categories(conn, [NormalizedCategory(category_id=15, category_name="Home & Garden")])
     store.upsert_categories(conn, [NormalizedCategory(category_id=15, category_name="Home & Garden (renamed)")])

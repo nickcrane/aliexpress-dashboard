@@ -5,6 +5,7 @@ from aliexpress_dashboard.client.normalize import (
     normalize_detail_product,
     normalize_search_product,
     parse_bucketed_count,
+    parse_category_ancestor_ids,
     parse_category_path,
     parse_int,
     parse_percent,
@@ -81,7 +82,7 @@ def test_normalize_search_product_basic():
         "title": "Widget",
         "itemUrl": "https://www.aliexpress.com/item/1005006109529182.html",
         "itemMainPic": "https://ae01.alicdn.com/kf/S1.jpg",
-        "cateId": 1503,
+        "cateId": "15,1503",
         "salePrice": "6.99",
         "salePriceCurrency": "GBP",
         "targetSalePrice": "6.99",
@@ -94,6 +95,7 @@ def test_normalize_search_product_basic():
     assert product.product_id == 1005006109529182
     assert product.product_title == "Widget"
     assert product.category_id == 1503
+    assert product.category_ancestor_ids == [15, 1503]
     assert product.sale_price == 6.99
     assert product.target_sale_price == 6.99
     assert product.target_sale_price_currency == "GBP"
@@ -137,6 +139,7 @@ def test_normalize_detail_product_full():
     assert product.product_id == 1005006109529182
     assert product.product_title == "Widget Detail"
     assert product.category_id == 1503
+    assert product.category_ancestor_ids == [1503]  # no path here, just the leaf id
     assert product.review_count == 1042
     assert product.avg_rating == 4.7
     assert product.sales_volume == 3821
@@ -201,6 +204,29 @@ def test_parse_category_path_single_id_still_works():
 
 def test_parse_category_path_missing_is_none():
     assert parse_category_path(None, field="cateId", product_id=1) is None
+
+
+def test_parse_category_ancestor_ids_full_root_to_leaf_path():
+    assert parse_category_ancestor_ids("66,200001147,201674401,200001313", field="cateId", product_id=1) == [
+        66,
+        200001147,
+        201674401,
+        200001313,
+    ]
+
+
+def test_parse_category_ancestor_ids_single_id_still_works():
+    assert parse_category_ancestor_ids("1503", field="cateId", product_id=1) == [1503]
+
+
+def test_parse_category_ancestor_ids_missing_is_empty():
+    assert parse_category_ancestor_ids(None, field="cateId", product_id=1) == []
+
+
+def test_parse_category_path_matches_last_entry_of_ancestor_ids():
+    value = "66,200001147,201674401,200001313"
+    ids = parse_category_ancestor_ids(value, field="cateId", product_id=1)
+    assert parse_category_path(value, field="cateId", product_id=1) == ids[-1]
 
 
 def test_normalize_search_product_fixes_protocol_relative_url():

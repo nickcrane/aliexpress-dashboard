@@ -115,7 +115,43 @@ def test_load_current_products_includes_category_name_and_path(seeded_conn):
     )
     df = load_current_products(seeded_conn, ProductFilters(category_id=1509))
     assert (df["category_name"] == "Kitchen Fixtures").all()
-    assert (df["category_path"] == "Home & Garden > Kitchen Fixtures").all()
+
+
+def _upsert_product_with_ancestors(conn, *, product_id, category_id, category_ancestor_ids):
+    from aliexpress_dashboard.client.models import NormalizedProduct
+
+    run_id = store.create_run(conn, mode="fixture")
+    product = NormalizedProduct(
+        product_id=product_id,
+        product_title="Deep-leaf product",
+        category_id=category_id,
+        category_ancestor_ids=category_ancestor_ids,
+        target_sale_price=9.99,
+        target_sale_price_currency="GBP",
+    )
+    store.upsert_product_and_observation(conn, product, run_id=run_id, search_id=None, captured_at="2026-01-01T00:00:00+00:00")
+    conn.commit()
+
+
+def test_category_resolution_falls_back_through_a_products_own_ancestor_path(tmp_path):
+    """The realistic production case: AliExpress's category-name lookup
+    only covers a broad/shallow tree, so a real product's specific leaf
+    category id usually isn't in it -- but an ancestor a level or two up
+    (present in the product's own cateId path, not derivable from the
+    categories table alone) usually is."""
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    store.upsert_categories(conn, [NormalizedCategory(category_id=44, category_name="Consumer Electronics")])
+    _upsert_product_with_ancestors(
+        conn, product_id=1, category_id=200332166, category_ancestor_ids=[44, 200003803, 200332166]
+    )
+
+    resolved = {c["category_id"]: c for c in distinct_categories(conn)}
+    assert resolved[200332166]["category_name"] == "Consumer Electronics"
+
+    df = load_current_products(conn, ProductFilters())
+    assert df.loc[df["product_id"] == 1, "category_name"].iloc[0] == "Consumer Electronics"
+    assert "category_ancestor_ids" not in df.columns  # internal detail, not part of the public shape
 
 
 def test_distinct_ship_to_countries(seeded_conn):

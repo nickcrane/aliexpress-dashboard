@@ -28,10 +28,14 @@ class NormalizedProduct:
       these for a product means one extra API call, not something that
       comes for free while browsing search results.
 
-    category_name is deliberately absent here -- neither endpoint returns a
-    category name, only category_id. Use get_categories() to build an
-    id -> name lookup if you need one; every reference to that lookup is
-    unverified against a live response (see AliClient.get_categories).
+    category_name is deliberately absent here -- neither endpoint returns
+    one, only ids. See dashboard/categories.py for id -> name resolution:
+    confirmed live that get_categories() only covers a much broader/
+    shallower category tree than real per-product leaf category ids (as
+    low as ~2% of distinct leaf ids in one production catalog resolved
+    directly), which is why category_ancestor_ids below matters -- it lets
+    a display layer fall back to whatever ancestor the id->name lookup
+    does cover, instead of only ever trying the leaf id alone.
 
     sale_price/sale_price_currency is the seller's/SKU's native price;
     target_sale_price/target_sale_price_currency is normalized to whatever
@@ -46,6 +50,12 @@ class NormalizedProduct:
     product_small_image_urls: List[str] = field(default_factory=list)
     product_video_url: Optional[str] = None
     category_id: Optional[int] = None
+    # Full root-to-leaf category id path ("cateId" on search results is a
+    # comma-separated path, not a single id -- see
+    # normalize.parse_category_ancestor_ids); category_id above is just
+    # this list's last (most specific) entry, kept as its own field since
+    # exact-match filtering should still use the precise leaf id.
+    category_ancestor_ids: List[int] = field(default_factory=list)
     sale_price: Optional[float] = None
     sale_price_currency: Optional[str] = None
     original_price: Optional[float] = None

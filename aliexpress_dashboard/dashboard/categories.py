@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -39,15 +39,29 @@ def load_category_paths(conn: sqlite3.Connection) -> Dict[int, CategoryPath]:
 
 
 def category_display(
-    category_id: Optional[int], paths: Dict[int, CategoryPath]
+    category_id: Optional[int],
+    paths: Dict[int, CategoryPath],
+    ancestor_ids: Sequence[int] = (),
 ) -> Tuple[Optional[str], Optional[str]]:
-    """(category_name, category_path) for a product's category_id, falling
-    back to a synthetic "Category <id>" label when the categories table
-    hasn't been synced for this id yet (see collector/cli.py sync-categories)."""
+    """(category_name, category_path) for a product's category_id.
+
+    Tries category_id itself first, then walks ancestor_ids (a product's
+    full root-to-leaf category path -- see
+    normalize.parse_category_ancestor_ids) from leaf back toward root,
+    using the deepest one that resolves. Necessary because AliExpress's
+    category-name lookup (`categories` table, populated by
+    collector/cli.py sync-categories) only covers a much broader/
+    shallower tree than real per-product leaf category ids -- confirmed
+    live, a bare leaf id resolved to a name only ~2% of the time in one
+    production catalog, while an ancestor a level or two up usually does.
+    Falls back to a synthetic "Category <id>" label only once every
+    candidate in the path is exhausted.
+    """
     if category_id is None:
         return None, None
-    found = paths.get(category_id)
-    if found is not None:
-        return found.name, found.path
+    for candidate in (category_id, *reversed(ancestor_ids)):
+        found = paths.get(candidate)
+        if found is not None:
+            return found.name, found.path
     fallback = f"Category {category_id}"
     return fallback, fallback
