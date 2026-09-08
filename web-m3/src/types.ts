@@ -79,3 +79,17 @@ export interface ShortlistSummary {
   created_at: string;
   item_count: number;
 }
+
+export interface BusinessProfile {
+  user_email: string;
+  seller_type: string | null;
+  product_niche: string | null;
+  target_market: string | null;
+  sales_channels: string[];
+  marketing_approach: string[];
+  budget_stage: string | null;
+  experience_level: string | null;
+  primary_category_id: number | null;
+  summary: string | null;
+  status: "in_progress" | "complete";
+}

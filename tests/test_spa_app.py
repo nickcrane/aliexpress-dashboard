@@ -80,6 +80,17 @@ def test_proxy_forwards_query_params_and_status(client):
     assert response.status_code == 422
 
 
+def test_proxy_forwards_content_type_for_json_post_bodies(client):
+    # Regression: the backend can't parse a POST body as JSON without a
+    # Content-Type header -- confirmed live this proxy was forwarding the
+    # raw bytes without it, 422ing every JSON-bodied route (e.g. saving a
+    # shortlist) proxied through here.
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    response = client.post("/api/shortlists", json={"name": "Q1 candidates", "product_ids": []})
+    assert response.status_code == 200
+    assert response.json()["name"] == "Q1 candidates"
+
+
 def test_spa_fallback_reports_missing_build_when_dist_absent(client, tmp_path, monkeypatch):
     monkeypatch.setattr(spa_app_module, "DIST_DIR", tmp_path / "nonexistent-dist")
     response = client.get("/momentum")
@@ -108,3 +119,114 @@ def test_spa_fallback_serves_real_files_directly(client, tmp_path, monkeypatch):
     response = client.get("/vite.svg")
     assert response.status_code == 200
     assert "icon" in response.text
+
+
+# ----------------------------------------------- business profile proxy ---
+
+
+def test_business_profile_proxy_requires_login(client):
+    assert client.get("/api/business-profile").status_code == 401
+    assert client.put("/api/business-profile", json={}).status_code == 401
+
+
+def test_business_profile_proxy_uses_verified_email_not_client_supplied(client):
+    # The core security property: a client claiming to be someone else in
+    # the request body must not be able to write to that user's profile.
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    response = client.put(
+        "/api/business-profile",
+        json={"user_email": "someone-else@example.com", "seller_type": "reseller"},
+    )
+    assert response.status_code == 200
+    assert response.json()["user_email"] == "allowed@example.com"
+
+
+def test_business_profile_proxy_round_trip(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    put_response = client.put(
+        "/api/business-profile",
+        json={"seller_type": "content_creator", "product_niche": "kitchen gadgets"},
+    )
+    assert put_response.status_code == 200
+
+    get_response = client.get("/api/business-profile")
+    assert get_response.status_code == 200
+    assert get_response.json()["product_niche"] == "kitchen gadgets"
+
+
+def test_business_profile_proxy_404_when_none_saved(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    assert client.get("/api/business-profile").status_code == 404
+
+
+# --------------------------------------------------------- onboarding ---
+
+
+def test_onboarding_synthesize_requires_login(client):
+    assert client.post("/api/onboarding/synthesize", json={"answers": {}}).status_code == 401
+
+
+def test_onboarding_synthesize_fails_closed_without_anthropic_key(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    response = client.post("/api/onboarding/synthesize", json={"answers": {}})
+    assert response.status_code == 503
+    assert "AE_ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+def _override_settings(client, **extra):
+    from dataclasses import replace
+
+    base = client.app.dependency_overrides[get_settings]()
+    app.dependency_overrides[get_settings] = lambda: replace(base, **extra)
+
+
+def test_onboarding_synthesize_respects_monthly_cap(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    # Push this month's usage (on the real backend behind `client`, via
+    # the generic proxy) to $2.00, then cap at $1.00.
+    record = client.post("/api/llm-usage/record", json={"input_tokens": 2_000_000, "output_tokens": 0})
+    assert record.status_code == 200
+
+    _override_settings(client, anthropic_api_key="test-anthropic-key", llm_monthly_cap_usd=1.0)
+    # synthesize_business_plan is deliberately NOT mocked here: if the cap
+    # check didn't short-circuit, this would instead try a real network
+    # call with a fake key and fail with a different error than the cap
+    # message below.
+    response = client.post("/api/onboarding/synthesize", json={"answers": {}})
+    assert response.status_code == 503
+    assert "spending cap" in response.json()["detail"]
+
+
+def test_onboarding_synthesize_happy_path(client, monkeypatch):
+    async def fake_synthesize(*, api_key, wizard_answers, categories):
+        from aliexpress_dashboard.client.llm_client import SynthesizedPlan
+
+        assert api_key == "test-anthropic-key"
+        assert wizard_answers == {"niche": "kitchen gadgets"}
+        return SynthesizedPlan(
+            seller_type="content_creator",
+            product_niche="kitchen gadgets",
+            target_market="young home cooks",
+            sales_channels=["tiktok_shop"],
+            marketing_approach=["organic_content"],
+            budget_stage="just_starting",
+            primary_category_id=None,
+            summary="A content creator selling kitchen gadgets.",
+            input_tokens=500,
+            output_tokens=150,
+        )
+
+    monkeypatch.setattr(spa_app_module, "synthesize_business_plan", fake_synthesize)
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    _override_settings(client, anthropic_api_key="test-anthropic-key", llm_monthly_cap_usd=20.0)
+
+    response = client.post("/api/onboarding/synthesize", json={"answers": {"niche": "kitchen gadgets"}})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["seller_type"] == "content_creator"
+    assert body["status"] == "complete"
+    assert body["user_email"] == "allowed@example.com"
+
+    # Usage got recorded against the real backend: $1/1M*500 + $5/1M*150
+    usage = client.get("/api/llm-usage/current-month")
+    assert usage.json()["cost_usd"] == pytest.approx(0.00125)

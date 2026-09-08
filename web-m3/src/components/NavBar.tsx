@@ -31,6 +31,9 @@ export function NavBar() {
         <NavLink to="/shortlists" style={navStyle}>
           Shortlists
         </NavLink>
+        <NavLink to="/onboarding" style={navStyle}>
+          Business Plan
+        </NavLink>
       </nav>
       {user && (
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem" }}>

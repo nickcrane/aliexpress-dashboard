@@ -17,6 +17,7 @@ rather than open when the key isn't configured.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import asdict
 from typing import List, Optional
 
 import numpy as np
@@ -32,6 +33,13 @@ from ..client.errors import TokenMissingError
 from ..collector import store
 from ..collector.runner import run_collection, sync_categories
 from ..config import Settings, get_settings
+from ..dashboard import llm_usage
+from ..dashboard.business_profiles import (
+    BusinessProfile,
+    delete_business_profile,
+    get_business_profile,
+    upsert_business_profile,
+)
 from ..dashboard.momentum import compute_momentum, load_observations_for_momentum
 from ..dashboard.queries import (
     ProductFilters,
@@ -259,3 +267,74 @@ def remove_shortlist_product_route(
 ) -> dict:
     remove_product_from_shortlist(conn, shortlist_id, product_id)
     return {"status": "ok"}
+
+
+# ------------------------------------------------- onboarding / LLM ---
+# This service owns all persistent data (including this new state), same
+# as everything above -- the Firebase-auth-gated caller lives in
+# spa/app.py, which verifies the user and calls the routes below with
+# their real email attached server-side. See dashboard/business_profiles.py
+# and dashboard/llm_usage.py.
+
+
+@app.get("/business-profile", dependencies=[Depends(require_api_key)])
+def get_business_profile_route(
+    user_email: str = Query(...),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    profile = get_business_profile(conn, user_email)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="No business profile for this user yet")
+    return asdict(profile)
+
+
+class BusinessProfileRequest(BaseModel):
+    user_email: str
+    seller_type: Optional[str] = None
+    product_niche: Optional[str] = None
+    target_market: Optional[str] = None
+    sales_channels: List[str] = []
+    marketing_approach: List[str] = []
+    budget_stage: Optional[str] = None
+    experience_level: Optional[str] = None
+    primary_category_id: Optional[int] = None
+    summary: Optional[str] = None
+    status: str = "in_progress"
+
+
+@app.put("/business-profile", dependencies=[Depends(require_api_key)])
+def put_business_profile_route(
+    body: BusinessProfileRequest,
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    profile = BusinessProfile(**body.model_dump())
+    upsert_business_profile(conn, profile)
+    return asdict(profile)
+
+
+@app.delete("/business-profile", dependencies=[Depends(require_api_key)])
+def delete_business_profile_route(
+    user_email: str = Query(...),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    delete_business_profile(conn, user_email)
+    return {"status": "ok"}
+
+
+@app.get("/llm-usage/current-month", dependencies=[Depends(require_api_key)])
+def llm_usage_current_month_route(conn: sqlite3.Connection = Depends(get_db_connection)) -> dict:
+    return {"cost_usd": llm_usage.current_month_cost_usd(conn)}
+
+
+class RecordUsageRequest(BaseModel):
+    input_tokens: int
+    output_tokens: int
+
+
+@app.post("/llm-usage/record", dependencies=[Depends(require_api_key)])
+def llm_usage_record_route(
+    body: RecordUsageRequest,
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    cost = llm_usage.record_usage(conn, input_tokens=body.input_tokens, output_tokens=body.output_tokens)
+    return {"cost_usd": cost}

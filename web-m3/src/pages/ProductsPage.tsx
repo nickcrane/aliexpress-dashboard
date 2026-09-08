@@ -1,17 +1,20 @@
 import "@material/web/textfield/outlined-text-field.js";
 import "@material/web/button/filled-button.js";
 import "@material/web/button/outlined-button.js";
+import "@material/web/button/text-button.js";
 
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { FilterPanel } from "../components/FilterPanel";
 import { ProductCard } from "../components/ProductCard";
 import { computeCompositeScore } from "../scoring";
-import type { FilterOptions, Product, ProductFilters, ScoreWeights } from "../types";
+import type { BusinessProfile, FilterOptions, Product, ProductFilters, ScoreWeights } from "../types";
 import { useMediaQuery } from "../useMediaQuery";
 
 const DEFAULT_WEIGHTS: ScoreWeights = { volume: 25, rating: 25, review_count: 25, price_fit: 25 };
+const DEFAULTS_DISMISSED_KEY = "businessPlanDefaultsDismissed";
 
 export function ProductsPage() {
   const [filters, setFilters] = useState<ProductFilters>({});
@@ -28,6 +31,8 @@ export function ProductsPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 900px)");
 
   useEffect(() => {
@@ -42,6 +47,41 @@ export function ProductsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let dismissed = false;
+    try {
+      dismissed = localStorage.getItem(DEFAULTS_DISMISSED_KEY) === "true";
+    } catch {
+      // localStorage unavailable (private browsing, etc.) -- just don't remember dismissal
+    }
+    api
+      .getBusinessProfile()
+      .then((profile) => {
+        if (cancelled || !profile) return;
+        setBusinessProfile(profile);
+        if (profile.primary_category_id && !dismissed) {
+          setFilters((prev) => ({ ...prev, category_id: profile.primary_category_id! }));
+          setDefaultsApplied(true);
+        }
+      })
+      // Non-fatal: no business plan yet just means no defaults get applied.
+      .catch((e) => !cancelled && console.error("Failed to load business profile:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function clearDefaults() {
+    setFilters((prev) => ({ ...prev, category_id: undefined }));
+    setDefaultsApplied(false);
+    try {
+      localStorage.setItem(DEFAULTS_DISMISSED_KEY, "true");
+    } catch {
+      // Fine to just not persist the dismissal
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +151,50 @@ export function ProductsPage() {
             </md-outlined-button>
           )}
         </div>
+
+        {defaultsApplied && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "0.75rem",
+              background: "var(--md-sys-color-tertiary-container)",
+              color: "var(--md-sys-color-on-tertiary-container)",
+              padding: "0.6rem 1rem",
+              borderRadius: "var(--md-sys-shape-corner-medium)",
+              marginBottom: "1rem",
+              fontSize: "0.85rem",
+            }}
+          >
+            <span>
+              Showing {businessProfile?.product_niche ?? "products"} based on your business plan.
+            </span>
+            <md-text-button type="button" onClick={clearDefaults}>
+              Clear
+            </md-text-button>
+          </div>
+        )}
+        {!businessProfile && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "0.75rem",
+              background: "var(--md-sys-color-surface-container-low)",
+              padding: "0.6rem 1rem",
+              borderRadius: "var(--md-sys-shape-corner-medium)",
+              marginBottom: "1rem",
+              fontSize: "0.85rem",
+            }}
+          >
+            <span>Get a personalized starting point for your product research.</span>
+            <Link to="/onboarding" style={{ color: "var(--md-sys-color-primary)" }}>
+              Set up your business plan
+            </Link>
+          </div>
+        )}
 
         {error && <div style={{ color: "var(--md-sys-color-error)", marginBottom: "1rem" }}>{error}</div>}
         {status && <div style={{ color: "var(--md-sys-color-primary)", marginBottom: "1rem" }}>{status}</div>}

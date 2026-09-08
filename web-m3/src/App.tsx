@@ -6,6 +6,7 @@ import { NavBar } from "./components/NavBar";
 import { isFirebaseConfigured } from "./firebase";
 import { LoginPage } from "./pages/LoginPage";
 import { MomentumPage } from "./pages/MomentumPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { ShortlistsPage } from "./pages/ShortlistsPage";
 
@@ -43,6 +44,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ShortlistsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/onboarding"
+          element={
+            <RequireAuth>
+              <OnboardingPage />
             </RequireAuth>
           }
         />

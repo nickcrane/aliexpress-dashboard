@@ -14,6 +14,7 @@ def test_migrations_apply_cleanly(tmp_path):
         "0002_shortlists.sql",
         "0003_categories.sql",
         "0004_category_ancestor_ids.sql",
+        "0005_business_profiles.sql",
     ]
 
     tables = {

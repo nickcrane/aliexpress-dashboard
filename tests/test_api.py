@@ -224,3 +224,75 @@ def test_data_routes_require_api_key(tmp_path):
     assert client.get("/products").status_code == 401
     assert client.get("/filters").status_code == 401
     assert client.post("/collect").status_code == 401
+
+
+# --------------------------------------------- business profile / LLM ---
+
+
+def test_business_profile_requires_api_key(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    assert client.get("/business-profile", params={"user_email": "a@example.com"}).status_code == 401
+
+
+def test_get_business_profile_404_when_none_saved(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/business-profile", params={"user_email": "nobody@example.com"})
+    assert response.status_code == 404
+
+
+def test_put_then_get_business_profile_round_trips(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    body = {
+        "user_email": "seller@example.com",
+        "seller_type": "content_creator",
+        "product_niche": "kitchen gadgets",
+        "sales_channels": ["tiktok_shop"],
+        "marketing_approach": ["organic_content"],
+        "budget_stage": "just_starting",
+        "summary": "A content creator selling kitchen gadgets.",
+        "status": "complete",
+    }
+    put_response = _auth(client, "put", "/business-profile", json=body)
+    assert put_response.status_code == 200
+
+    get_response = _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"})
+    assert get_response.status_code == 200
+    profile = get_response.json()
+    assert profile["seller_type"] == "content_creator"
+    assert profile["sales_channels"] == ["tiktok_shop"]
+    assert profile["status"] == "complete"
+
+
+def test_put_business_profile_upserts_by_email(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    _auth(client, "put", "/business-profile", json={"user_email": "seller@example.com", "seller_type": "reseller"})
+    _auth(
+        client,
+        "put",
+        "/business-profile",
+        json={"user_email": "seller@example.com", "seller_type": "influencer"},
+    )
+    profile = _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).json()
+    assert profile["seller_type"] == "influencer"
+
+
+def test_delete_business_profile(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    _auth(client, "put", "/business-profile", json={"user_email": "seller@example.com"})
+    delete_response = _auth(client, "delete", "/business-profile", params={"user_email": "seller@example.com"})
+    assert delete_response.status_code == 200
+    assert _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).status_code == 404
+
+
+def test_llm_usage_current_month_starts_at_zero(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/llm-usage/current-month")
+    assert response.status_code == 200
+    assert response.json() == {"cost_usd": 0.0}
+
+
+def test_llm_usage_record_accumulates(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    _auth(client, "post", "/llm-usage/record", json={"input_tokens": 1_000_000, "output_tokens": 0})
+    response = _auth(client, "get", "/llm-usage/current-month")
+    assert response.json()["cost_usd"] == pytest.approx(1.00)

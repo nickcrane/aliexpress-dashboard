@@ -11,3 +11,4 @@ itsdangerous>=2.1
 python-multipart>=0.0.9
 google-auth>=2.35
 requests>=2.31
+anthropic>=1.0

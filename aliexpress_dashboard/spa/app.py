@@ -16,13 +16,16 @@ Run locally (after `npm run build` in web-m3):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Dict
 
+import anthropic
 import httpx
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
+from ..client.llm_client import synthesize_business_plan
 from ..config import Settings, get_settings
 from .security import require_firebase_login
 
@@ -45,6 +48,105 @@ async def get_backend_client(settings: Settings = Depends(get_settings)) -> Asyn
         await client.aclose()
 
 
+async def _proxy_json(upstream: httpx.Response) -> Response:
+    return Response(content=upstream.content, status_code=upstream.status_code, media_type="application/json")
+
+
+# Registered ahead of the generic catch-all proxy below (FastAPI matches
+# routes in registration order) because these two need the caller's
+# *verified* email attached server-side -- the generic proxy forwards
+# whatever the client's own request body/query says verbatim, which is
+# fine for AliExpress data (nothing user-scoped) but would let a client
+# read or overwrite another user's business_profiles row just by naming
+# their email if these went through it instead.
+
+
+@app.get("/api/business-profile")
+async def get_business_profile_proxy(
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+) -> Response:
+    upstream = await backend.get("/business-profile", params={"user_email": email})
+    return await _proxy_json(upstream)
+
+
+@app.put("/api/business-profile")
+async def put_business_profile_proxy(
+    request: Request,
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+) -> Response:
+    body = await request.json()
+    body["user_email"] = email  # never trust the client's own claim
+    upstream = await backend.put("/business-profile", json=body)
+    return await _proxy_json(upstream)
+
+
+class OnboardingRequest(BaseModel):
+    answers: Dict[str, str]
+
+
+@app.post("/api/onboarding/synthesize")
+async def onboarding_synthesize(
+    body: OnboardingRequest,
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    if not settings.anthropic_api_key:
+        return JSONResponse(
+            status_code=503, content={"detail": "Business plan assistant not configured (AE_ANTHROPIC_API_KEY unset)"}
+        )
+
+    usage_resp = await backend.get("/llm-usage/current-month")
+    if usage_resp.status_code != 200:
+        return JSONResponse(status_code=502, content={"detail": "Could not check this month's usage cap"})
+    if usage_resp.json()["cost_usd"] >= settings.llm_monthly_cap_usd:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "The business plan assistant has hit this month's spending cap -- try again next month."
+            },
+        )
+
+    filters_resp = await backend.get("/filters")
+    if filters_resp.status_code != 200:
+        return JSONResponse(status_code=502, content={"detail": "Could not load categories"})
+    categories = [(node["category_id"], node["category_name"]) for node in filters_resp.json()["category_tree"]]
+
+    try:
+        plan = await synthesize_business_plan(
+            api_key=settings.anthropic_api_key, wizard_answers=body.answers, categories=categories
+        )
+    except anthropic.RateLimitError as exc:
+        return JSONResponse(status_code=429, content={"detail": f"Business plan assistant is busy: {exc}"})
+    except anthropic.APIStatusError as exc:
+        return JSONResponse(status_code=502, content={"detail": f"Business plan assistant error: {exc}"})
+    except anthropic.APIConnectionError as exc:
+        return JSONResponse(status_code=502, content={"detail": f"Business plan assistant unreachable: {exc}"})
+
+    await backend.post(
+        "/llm-usage/record", json={"input_tokens": plan.input_tokens, "output_tokens": plan.output_tokens}
+    )
+
+    save_resp = await backend.put(
+        "/business-profile",
+        json={
+            "user_email": email,
+            "seller_type": plan.seller_type,
+            "product_niche": plan.product_niche,
+            "target_market": plan.target_market,
+            "sales_channels": plan.sales_channels,
+            "marketing_approach": plan.marketing_approach,
+            "budget_stage": plan.budget_stage,
+            "primary_category_id": plan.primary_category_id,
+            "summary": plan.summary,
+            "status": "complete",
+        },
+    )
+    return await _proxy_json(save_resp)
+
+
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy(
     path: str,
@@ -53,12 +155,19 @@ async def proxy(
     backend: httpx.AsyncClient = Depends(get_backend_client),
 ) -> Response:
     body = await request.body()
+    # Confirmed live: without forwarding Content-Type, the backend
+    # receives a bodyless-looking POST and 422s trying to parse it --
+    # this was silently broken for every JSON-bodied route proxied here
+    # (e.g. POST /shortlists) until a test on the new onboarding routes
+    # happened to exercise a POST body through this path for the first time.
+    content_type = request.headers.get("content-type")
     try:
         upstream = await backend.request(
             request.method,
             f"/{path}",
             params=request.query_params,
             content=body or None,
+            headers={"content-type": content_type} if content_type else None,
         )
     except httpx.TransportError as exc:
         return JSONResponse(status_code=502, content={"detail": f"Backend API unreachable: {exc}"})

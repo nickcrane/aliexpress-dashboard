@@ -7,6 +7,7 @@
 // the same service in production; vite.config.ts forwards that path to a
 // local proxy instance in dev (see web-m3/README.md).
 import type {
+  BusinessProfile,
   FilterOptions,
   MomentumRow,
   Product,
@@ -109,4 +110,21 @@ export const api = {
 
   deleteShortlist: (shortlistId: number) =>
     request<{ status: string }>(`/shortlists/${shortlistId}`, { method: "DELETE" }),
+
+  getBusinessProfile: async (): Promise<BusinessProfile | null> => {
+    // Not a shared `request()` call: no business profile yet is a normal
+    // state (every new user starts here), not an error to throw on.
+    const response = await fetchOnce("/business-profile", {});
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(`GET /business-profile -> ${response.status}: ${await response.text()}`);
+    }
+    return response.json();
+  },
+
+  synthesizeOnboarding: (answers: Record<string, string>) =>
+    request<BusinessProfile>("/onboarding/synthesize", {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    }),
 };

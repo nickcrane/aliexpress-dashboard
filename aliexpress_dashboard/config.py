@@ -116,6 +116,15 @@ class Settings:
     # here. Unset means the SPA's API proxy fails closed, same reasoning as
     # AE_API_KEY in api/security.py.
     firebase_project_id: str | None = field(default_factory=lambda: os.getenv("AE_FIREBASE_PROJECT_ID") or None)
+    # Claude API key for the onboarding business-plan synthesis call --
+    # see client/llm_client.py. Only consumed by spa/app.py's onboarding
+    # route; the API service never touches it. Unset means that route
+    # fails closed, same reasoning as AE_API_KEY/AE_FIREBASE_PROJECT_ID.
+    anthropic_api_key: str | None = field(default_factory=lambda: os.getenv("AE_ANTHROPIC_API_KEY") or None)
+    # Hard monthly USD cap on that same LLM spend -- checked before every
+    # call via dashboard/llm_usage.py. Deliberately has a real default
+    # (not None/unlimited): an unset cap should never mean unbounded spend.
+    llm_monthly_cap_usd: float = field(default_factory=lambda: _float_env("AE_LLM_MONTHLY_CAP_USD", 20.0))
 
     def __post_init__(self) -> None:
         if self.mode not in ("fixture", "live"):
