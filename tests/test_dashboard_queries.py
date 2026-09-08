@@ -7,6 +7,7 @@ from aliexpress_dashboard.collector.runner import run_collection
 from aliexpress_dashboard.config import Settings
 from aliexpress_dashboard.dashboard.queries import (
     ProductFilters,
+    category_tree,
     distinct_categories,
     distinct_ship_to_countries,
     distinct_target_currencies,
@@ -200,3 +201,97 @@ def test_load_price_history_returns_ordered_prices_after_a_second_run(tmp_path):
 
 def test_load_price_history_empty_product_list(seeded_conn):
     assert load_price_history(seeded_conn, []) == {}
+
+
+def test_category_tree_groups_resolved_categories_by_root(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=44, category_name="Consumer Electronics"),
+            NormalizedCategory(category_id=200003803, category_name="Smart Electronics", parent_category_id=44),
+            NormalizedCategory(category_id=200001103, category_name="Games & Accessories", parent_category_id=44),
+        ],
+    )
+    _upsert_product_with_ancestors(conn, product_id=1, category_id=200003803, category_ancestor_ids=[44, 200003803])
+    _upsert_product_with_ancestors(conn, product_id=2, category_id=200001103, category_ancestor_ids=[44, 200001103])
+
+    tree = category_tree(conn)
+    assert len(tree) == 1
+    parent = tree[0]
+    assert parent["category_id"] == 44
+    assert parent["category_name"] == "Consumer Electronics"
+    child_names = {c["category_name"] for c in parent["children"]}
+    assert child_names == {"Smart Electronics", "Games & Accessories"}
+
+
+def test_category_tree_top_level_resolved_id_has_no_children(tmp_path):
+    # A product whose deepest resolvable category IS a root -- still a
+    # valid, directly-selectable parent, just with nothing under it.
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    store.upsert_categories(conn, [NormalizedCategory(category_id=30, category_name="Security & Protection")])
+    _upsert_product_with_ancestors(
+        conn, product_id=1, category_id=200332166, category_ancestor_ids=[30, 202245601, 200332166]
+    )
+
+    tree = category_tree(conn)
+    assert tree == [{"category_id": 30, "category_name": "Security & Protection", "children": []}]
+
+
+def test_category_tree_excludes_products_with_nothing_resolvable(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    # No categories synced at all -- nothing can resolve.
+    _upsert_product_with_ancestors(conn, product_id=1, category_id=999, category_ancestor_ids=[999])
+    assert category_tree(conn) == []
+
+
+def test_load_current_products_filter_by_parent_matches_all_descendants(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=44, category_name="Consumer Electronics"),
+            NormalizedCategory(category_id=200003803, category_name="Smart Electronics", parent_category_id=44),
+        ],
+    )
+    _upsert_product_with_ancestors(conn, product_id=1, category_id=200003803, category_ancestor_ids=[44, 200003803])
+    _upsert_product_with_ancestors(conn, product_id=2, category_id=1509, category_ancestor_ids=[1509])
+
+    df = load_current_products(conn, ProductFilters(category_id=44))
+    assert df["product_id"].tolist() == [1]
+
+
+def test_load_current_products_filter_by_child_matches_only_that_child(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=44, category_name="Consumer Electronics"),
+            NormalizedCategory(category_id=200003803, category_name="Smart Electronics", parent_category_id=44),
+            NormalizedCategory(category_id=200001103, category_name="Games & Accessories", parent_category_id=44),
+        ],
+    )
+    _upsert_product_with_ancestors(conn, product_id=1, category_id=200003803, category_ancestor_ids=[44, 200003803])
+    _upsert_product_with_ancestors(conn, product_id=2, category_id=200001103, category_ancestor_ids=[44, 200001103])
+
+    df = load_current_products(conn, ProductFilters(category_id=200003803))
+    assert df["product_id"].tolist() == [1]
+
+
+def test_load_current_products_filter_tolerates_null_ancestor_ids(tmp_path):
+    # Real production scenario: rows collected before 0004 added this
+    # column have category_ancestor_ids as a genuine SQL NULL, not "[]"
+    # -- json_each(NULL) must not error out of the whole query.
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    _upsert_product_with_ancestors(conn, product_id=1, category_id=1509, category_ancestor_ids=[1509])
+    conn.execute("UPDATE products SET category_ancestor_ids = NULL WHERE product_id = 1")
+    conn.commit()
+
+    df = load_current_products(conn, ProductFilters(category_id=1509))
+    assert df["product_id"].tolist() == [1]  # still matches via the plain category_id equality branch

@@ -7,7 +7,7 @@ import "@material/web/iconbutton/icon-button.js";
 
 import { type FormEvent, useState } from "react";
 
-import type { FilterOptions, ProductFilters, ScoreWeights } from "../types";
+import type { CategoryTreeNode, FilterOptions, ProductFilters, ScoreWeights } from "../types";
 import { useMediaQuery } from "../useMediaQuery";
 
 interface Props {
@@ -20,10 +20,23 @@ interface Props {
   onApply: (filters: ProductFilters, weights: ScoreWeights) => void;
 }
 
+// A category_id might be a top-level node itself or one of its children --
+// either way, this is which parent dropdown option it belongs under.
+function findParentId(categoryId: number | undefined, tree: CategoryTreeNode[]): number | undefined {
+  if (categoryId === undefined) return undefined;
+  const node = tree.find(
+    (n) => n.category_id === categoryId || n.children.some((c) => c.category_id === categoryId),
+  );
+  return node?.category_id;
+}
+
 export function FilterPanel({ filterOptions, filters, weights, priceCeiling, open, onClose, onApply }: Props) {
   const isDesktop = useMediaQuery("(min-width: 900px)");
   const [draftFilters, setDraftFilters] = useState<ProductFilters>(filters);
   const [draftWeights, setDraftWeights] = useState<ScoreWeights>(weights);
+  const [selectedParentId, setSelectedParentId] = useState<number | undefined>(() =>
+    findParentId(filters.category_id, filterOptions.category_tree),
+  );
 
   const visible = isDesktop || open;
 
@@ -40,7 +53,27 @@ export function FilterPanel({ filterOptions, filters, weights, priceCeiling, ope
     }));
   }
 
+  function selectParent(value: string) {
+    const parentId = value === "" ? undefined : Number(value);
+    setSelectedParentId(parentId);
+    // Selecting just a parent filters to everything under it -- the
+    // backend matches this id against a product's whole ancestor path,
+    // not only an exact leaf match, so this is correct on its own even
+    // before a subcategory is picked.
+    setDraftFilters((prev) => ({ ...prev, category_id: parentId }));
+  }
+
+  function selectChild(value: string) {
+    setDraftFilters((prev) => ({ ...prev, category_id: value === "" ? selectedParentId : Number(value) }));
+  }
+
   if (!visible) return null;
+
+  const selectedParent = filterOptions.category_tree.find((n) => n.category_id === selectedParentId);
+  const childValue =
+    draftFilters.category_id !== undefined && draftFilters.category_id !== selectedParentId
+      ? draftFilters.category_id.toString()
+      : "";
 
   return (
     <>
@@ -94,18 +127,35 @@ export function FilterPanel({ filterOptions, filters, weights, priceCeiling, ope
 
         <md-outlined-select
           label="Category"
-          value={draftFilters.category_id?.toString() ?? ""}
-          onchange={(e: Event) => field("category_id", (e.target as HTMLSelectElement).value)}
+          value={selectedParentId?.toString() ?? ""}
+          onchange={(e: Event) => selectParent((e.target as HTMLSelectElement).value)}
         >
           <md-select-option value="">
             <div slot="headline">All categories</div>
           </md-select-option>
-          {filterOptions.categories.map((c) => (
-            <md-select-option key={c.category_id} value={c.category_id.toString()}>
-              <div slot="headline">{c.category_path ?? `Category ${c.category_id}`}</div>
+          {filterOptions.category_tree.map((node) => (
+            <md-select-option key={node.category_id} value={node.category_id.toString()}>
+              <div slot="headline">{node.category_name}</div>
             </md-select-option>
           ))}
         </md-outlined-select>
+
+        {selectedParent && selectedParent.children.length > 0 && (
+          <md-outlined-select
+            label="Subcategory"
+            value={childValue}
+            onchange={(e: Event) => selectChild((e.target as HTMLSelectElement).value)}
+          >
+            <md-select-option value="">
+              <div slot="headline">All in {selectedParent.category_name}</div>
+            </md-select-option>
+            {selectedParent.children.map((child) => (
+              <md-select-option key={child.category_id} value={child.category_id.toString()}>
+                <div slot="headline">{child.category_name}</div>
+              </md-select-option>
+            ))}
+          </md-outlined-select>
+        )}
 
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <md-outlined-text-field

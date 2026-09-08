@@ -31,6 +31,11 @@ _MOMENTUM_COLUMNS = [
 @dataclass
 class FilterOptions:
     categories: List[dict]  # {category_id, category_name, category_path} -- see dashboard/categories.py
+    # {category_id, category_name, children: [{category_id, category_name}]}
+    # per top-level category -- unused by this Bootstrap app's flat
+    # dropdown, but must be declared here since FilterOptions(**data)
+    # unpacks every key /filters returns.
+    category_tree: List[dict]
     currencies: List[str]
     ship_to_countries: List[str]
 

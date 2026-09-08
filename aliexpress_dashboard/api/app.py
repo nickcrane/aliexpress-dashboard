@@ -35,6 +35,7 @@ from ..config import Settings, get_settings
 from ..dashboard.momentum import compute_momentum, load_observations_for_momentum
 from ..dashboard.queries import (
     ProductFilters,
+    category_tree,
     distinct_categories,
     distinct_ship_to_countries,
     distinct_target_currencies,
@@ -179,6 +180,10 @@ def products_price_history(
 def filters(conn: sqlite3.Connection = Depends(get_db_connection)) -> dict:
     return {
         "categories": distinct_categories(conn),
+        # {parent -> children} for a cascading category filter -- see
+        # dashboard/queries.py:category_tree. "categories" above stays as
+        # the flat list for the legacy Bootstrap app's single dropdown.
+        "category_tree": category_tree(conn),
         "currencies": distinct_target_currencies(conn),
         "ship_to_countries": distinct_ship_to_countries(conn),
     }

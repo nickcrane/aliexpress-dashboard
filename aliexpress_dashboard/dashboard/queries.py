@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from .categories import category_display, load_category_paths
+from .categories import category_display, load_category_paths, resolve_category_id
 
 
 @dataclass
@@ -87,6 +87,46 @@ def distinct_categories(conn: sqlite3.Connection) -> List[dict]:
     return result
 
 
+def category_tree(conn: sqlite3.Connection) -> List[dict]:
+    """Two-level {parent -> children} structure for a cascading category
+    filter (pick a parent, then a child scoped to it), restricted to
+    categories actually reachable by at least one collected product --
+    via that product's *resolved* category id (see category_display),
+    which might be an ancestor of its true leaf, not the leaf itself.
+    A resolved id that's already top-level becomes a parent with no
+    children of its own (still directly selectable)."""
+    rows = conn.execute(
+        """
+        SELECT category_id, MIN(category_ancestor_ids) AS category_ancestor_ids
+        FROM products
+        WHERE category_id IS NOT NULL
+        GROUP BY category_id
+        """
+    ).fetchall()
+    paths = load_category_paths(conn)
+
+    resolved_ids = set()
+    for row in rows:
+        category_id = row["category_id"]
+        ancestor_ids = json.loads(row["category_ancestor_ids"]) if row["category_ancestor_ids"] else ()
+        resolved = resolve_category_id(category_id, paths, ancestor_ids)
+        if resolved is not None:
+            resolved_ids.add(resolved)
+
+    tree: Dict[int, dict] = {}
+    for resolved_id in resolved_ids:
+        info = paths[resolved_id]
+        parent_node = tree.setdefault(
+            info.root_id, {"category_id": info.root_id, "category_name": info.root_name, "children": []}
+        )
+        if resolved_id != info.root_id:
+            parent_node["children"].append({"category_id": resolved_id, "category_name": info.name})
+
+    for node in tree.values():
+        node["children"].sort(key=lambda c: c["category_name"])
+    return sorted(tree.values(), key=lambda n: n["category_name"])
+
+
 def distinct_ship_to_countries(conn: sqlite3.Connection) -> List[str]:
     rows = conn.execute(
         "SELECT DISTINCT ship_to_country FROM searches "
@@ -142,7 +182,15 @@ def load_current_products(conn: sqlite3.Connection, filters: ProductFilters) -> 
     params: dict = {}
 
     if filters.category_id is not None:
-        clauses.append("p.category_id = :category_id")
+        # Matches the exact leaf id, or any product whose full category
+        # path (category_ancestor_ids) passes through this id -- so
+        # filtering by a parent from the cascading category picker
+        # correctly includes every child under it, not just products
+        # whose leaf id happens to equal the parent's exactly.
+        clauses.append(
+            "(p.category_id = :category_id OR EXISTS "
+            "(SELECT 1 FROM json_each(p.category_ancestor_ids) WHERE json_each.value = :category_id))"
+        )
         params["category_id"] = filters.category_id
     if filters.price_currency is not None:
         clauses.append("p.target_sale_price_currency = :price_currency")

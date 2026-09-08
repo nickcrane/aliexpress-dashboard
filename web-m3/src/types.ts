@@ -22,14 +22,21 @@ export interface Product {
   score?: number;
 }
 
-export interface CategoryOption {
+export interface CategoryTreeChild {
   category_id: number;
-  category_name: string | null;
-  category_path: string | null;
+  category_name: string;
+}
+
+export interface CategoryTreeNode {
+  category_id: number;
+  category_name: string;
+  children: CategoryTreeChild[];
 }
 
 export interface FilterOptions {
-  categories: CategoryOption[];
+  // Flat category list also exists on the API response but isn't used
+  // by this app -- see the cascading picker built from category_tree.
+  category_tree: CategoryTreeNode[];
   currencies: string[];
   ship_to_countries: string[];
 }

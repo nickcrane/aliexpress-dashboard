@@ -16,26 +16,45 @@ from typing import Dict, Optional, Sequence, Tuple
 class CategoryPath:
     name: str
     path: str  # "Root > ... > name"; just `name` for a top-level category
+    root_id: int  # this category's own id, if it's already top-level
+    root_name: str
 
 
 def load_category_paths(conn: sqlite3.Connection) -> Dict[int, CategoryPath]:
-    """category_id -> (name, full breadcrumb path), walking parent_category_id
-    up to a top-level category (parent_category_id IS NULL)."""
+    """category_id -> lineage info, walking parent_category_id up to a
+    top-level category (parent_category_id IS NULL)."""
     rows = conn.execute("SELECT category_id, category_name, parent_category_id FROM categories").fetchall()
     by_id = {row["category_id"]: (row["category_name"], row["parent_category_id"]) for row in rows}
 
     paths: Dict[int, CategoryPath] = {}
     for category_id, (name, _parent) in by_id.items():
         breadcrumbs = [name]
+        root_id, root_name = category_id, name
         current_parent = by_id[category_id][1]
         seen = {category_id}  # guards against a cycle in source data, however unlikely
         while current_parent is not None and current_parent in by_id and current_parent not in seen:
             parent_name, next_parent = by_id[current_parent]
             breadcrumbs.append(parent_name)
+            root_id, root_name = current_parent, parent_name
             seen.add(current_parent)
             current_parent = next_parent
-        paths[category_id] = CategoryPath(name=name, path=" > ".join(reversed(breadcrumbs)))
+        paths[category_id] = CategoryPath(
+            name=name, path=" > ".join(reversed(breadcrumbs)), root_id=root_id, root_name=root_name
+        )
     return paths
+
+
+def resolve_category_id(category_id: Optional[int], paths: Dict[int, CategoryPath], ancestor_ids: Sequence[int] = ()) -> Optional[int]:
+    """The most specific id in category_id's own path (leaf first, then
+    ancestor_ids from leaf back toward root) that's actually present in
+    the categories table -- None if nothing in the path resolves. See
+    category_display, which wraps this to also return display strings."""
+    if category_id is None:
+        return None
+    for candidate in (category_id, *reversed(ancestor_ids)):
+        if candidate in paths:
+            return candidate
+    return None
 
 
 def category_display(
@@ -59,9 +78,9 @@ def category_display(
     """
     if category_id is None:
         return None, None
-    for candidate in (category_id, *reversed(ancestor_ids)):
-        found = paths.get(candidate)
-        if found is not None:
-            return found.name, found.path
+    resolved = resolve_category_id(category_id, paths, ancestor_ids)
+    if resolved is not None:
+        found = paths[resolved]
+        return found.name, found.path
     fallback = f"Category {category_id}"
     return fallback, fallback

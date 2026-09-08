@@ -17,7 +17,7 @@ export function ProductsPage() {
   const [filters, setFilters] = useState<ProductFilters>({});
   const [weights, setWeights] = useState<ScoreWeights>(DEFAULT_WEIGHTS);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    categories: [],
+    category_tree: [],
     currencies: [],
     ship_to_countries: [],
   });
