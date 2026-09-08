@@ -1,7 +1,11 @@
-"""Multi-tenant business-plan onboarding: one profile per Firebase email
-(see spa/security.py -- that's the only user identity this app has).
-Deliberately schema-shaped (not free text) so it can drive default
-filters/sort weights on the Products page, not just be displayed back.
+"""Multi-tenant, versioned business-plan onboarding: a Firebase email (see
+spa/security.py -- that's the only user identity this app has) can have
+many saved plans. At most one is "active" per user at a time (enforced by
+a partial unique index -- see db/migrations/0006_business_profile_versions.sql)
+-- that's the one dashboard/queries.py-adjacent callers read to drive
+default filters/sort weights on the Products page. Editing a specific
+version updates it in place; creating a new one never overwrites an
+existing row.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ _FIELDS = (
 @dataclass
 class BusinessProfile:
     user_email: str
+    id: Optional[int] = None
     seller_type: Optional[str] = None
     product_niche: Optional[str] = None
     target_market: Optional[str] = None
@@ -38,10 +43,14 @@ class BusinessProfile:
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
     status: str = "in_progress"
+    is_active: bool = False
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 def _row_to_profile(row: sqlite3.Row) -> BusinessProfile:
     return BusinessProfile(
+        id=row["id"],
         user_email=row["user_email"],
         seller_type=row["seller_type"],
         product_niche=row["product_niche"],
@@ -53,23 +62,33 @@ def _row_to_profile(row: sqlite3.Row) -> BusinessProfile:
         primary_category_id=row["primary_category_id"],
         summary=row["summary"],
         status=row["status"],
+        is_active=bool(row["is_active"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 
-def get_business_profile(conn: sqlite3.Connection, user_email: str) -> Optional[BusinessProfile]:
-    row = conn.execute("SELECT * FROM business_profiles WHERE user_email = ?", (user_email,)).fetchone()
+def list_business_profiles(conn: sqlite3.Connection, user_email: str) -> List[BusinessProfile]:
+    rows = conn.execute(
+        "SELECT * FROM business_profiles WHERE user_email = ? ORDER BY created_at DESC", (user_email,)
+    ).fetchall()
+    return [_row_to_profile(row) for row in rows]
+
+
+def get_active_business_profile(conn: sqlite3.Connection, user_email: str) -> Optional[BusinessProfile]:
+    row = conn.execute(
+        "SELECT * FROM business_profiles WHERE user_email = ? AND is_active = 1", (user_email,)
+    ).fetchone()
     return _row_to_profile(row) if row else None
 
 
-def upsert_business_profile(conn: sqlite3.Connection, profile: BusinessProfile) -> None:
-    """Fields left as None on `profile` overwrite whatever was stored --
-    callers that only want to patch specific fields should load the
-    existing profile first, update it, then pass the whole thing back in.
-    Partial (not `status='complete'`) profiles are expected and fine:
-    the Products page applies whatever defaults it can from whatever
-    fields are actually populated -- see dashboard/queries.py callers."""
-    values = {
-        "user_email": profile.user_email,
+def get_business_profile_by_id(conn: sqlite3.Connection, profile_id: int) -> Optional[BusinessProfile]:
+    row = conn.execute("SELECT * FROM business_profiles WHERE id = ?", (profile_id,)).fetchone()
+    return _row_to_profile(row) if row else None
+
+
+def _values(profile: BusinessProfile) -> dict:
+    return {
         "seller_type": profile.seller_type,
         "product_niche": profile.product_niche,
         "target_market": profile.target_market,
@@ -81,23 +100,56 @@ def upsert_business_profile(conn: sqlite3.Connection, profile: BusinessProfile) 
         "summary": profile.summary,
         "status": profile.status,
     }
-    set_clause = ",\n            ".join(f"{col}=excluded.{col}" for col in _FIELDS)
-    conn.execute(
+
+
+def create_business_profile(conn: sqlite3.Connection, profile: BusinessProfile, *, make_active: bool) -> int:
+    """Always inserts a new version -- never overwrites an existing row.
+    If make_active, clears is_active on this user's other versions first
+    (in the same transaction), so the partial unique index is never
+    violated and the new row cleanly becomes the sole active one."""
+    if make_active:
+        conn.execute("UPDATE business_profiles SET is_active = 0 WHERE user_email = ?", (profile.user_email,))
+    values = _values(profile)
+    values["user_email"] = profile.user_email
+    values["is_active"] = 1 if make_active else 0
+    cursor = conn.execute(
         f"""
-        INSERT INTO business_profiles (
-            user_email, {", ".join(_FIELDS)}, updated_at
-        ) VALUES (
-            :user_email, {", ".join(f":{col}" for col in _FIELDS)}, datetime('now')
-        )
-        ON CONFLICT(user_email) DO UPDATE SET
-            {set_clause},
-            updated_at=datetime('now')
+        INSERT INTO business_profiles (user_email, {", ".join(_FIELDS)}, is_active)
+        VALUES (:user_email, {", ".join(f":{col}" for col in _FIELDS)}, :is_active)
         """,
+        values,
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def update_business_profile(conn: sqlite3.Connection, profile_id: int, profile: BusinessProfile) -> None:
+    """Edits an existing version in place -- does not change which
+    version is active."""
+    values = _values(profile)
+    values["id"] = profile_id
+    set_clause = ",\n            ".join(f"{col}=:{col}" for col in _FIELDS)
+    conn.execute(
+        f"UPDATE business_profiles SET {set_clause}, updated_at=datetime('now') WHERE id=:id",
         values,
     )
     conn.commit()
 
 
-def delete_business_profile(conn: sqlite3.Connection, user_email: str) -> None:
-    conn.execute("DELETE FROM business_profiles WHERE user_email = ?", (user_email,))
+def set_active_business_profile(conn: sqlite3.Connection, profile_id: int) -> None:
+    """Derives the owning user_email from the profile itself rather than
+    taking it as a caller-supplied argument -- callers should already
+    have verified ownership (see api/app.py's _require_owned_profile)
+    before calling this; this just needs to know which sibling rows to
+    deactivate."""
+    row = conn.execute("SELECT user_email FROM business_profiles WHERE id = ?", (profile_id,)).fetchone()
+    if row is None:
+        return
+    conn.execute("UPDATE business_profiles SET is_active = 0 WHERE user_email = ?", (row["user_email"],))
+    conn.execute("UPDATE business_profiles SET is_active = 1 WHERE id = ?", (profile_id,))
+    conn.commit()
+
+
+def delete_business_profile(conn: sqlite3.Connection, profile_id: int) -> None:
+    conn.execute("DELETE FROM business_profiles WHERE id = ?", (profile_id,))
     conn.commit()

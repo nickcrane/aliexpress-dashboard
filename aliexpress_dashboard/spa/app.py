@@ -16,7 +16,7 @@ Run locally (after `npm run build` in web-m3):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import AsyncIterator, Dict
+from typing import AsyncIterator, Dict, Optional
 
 import anthropic
 import httpx
@@ -62,28 +62,77 @@ async def _proxy_json(upstream: httpx.Response) -> Response:
 
 
 @app.get("/api/business-profile")
-async def get_business_profile_proxy(
+async def get_active_business_profile_proxy(
     email: str = Depends(require_firebase_login),
     backend: httpx.AsyncClient = Depends(get_backend_client),
 ) -> Response:
+    """The one version currently driving Products page defaults."""
     upstream = await backend.get("/business-profile", params={"user_email": email})
     return await _proxy_json(upstream)
 
 
-@app.put("/api/business-profile")
-async def put_business_profile_proxy(
+@app.get("/api/business-profiles")
+async def list_business_profiles_proxy(
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+) -> Response:
+    """Every saved version, for the plan-history / switch-version UI."""
+    upstream = await backend.get("/business-profiles", params={"user_email": email})
+    return await _proxy_json(upstream)
+
+
+@app.post("/api/business-profiles")
+async def create_business_profile_proxy(
     request: Request,
     email: str = Depends(require_firebase_login),
     backend: httpx.AsyncClient = Depends(get_backend_client),
 ) -> Response:
+    """Always a new version -- never overwrites an existing one."""
     body = await request.json()
     body["user_email"] = email  # never trust the client's own claim
-    upstream = await backend.put("/business-profile", json=body)
+    upstream = await backend.post("/business-profiles", json=body)
+    return await _proxy_json(upstream)
+
+
+@app.put("/api/business-profiles/{profile_id}")
+async def update_business_profile_proxy(
+    profile_id: int,
+    request: Request,
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+) -> Response:
+    """Edits this specific version in place."""
+    body = await request.json()
+    body["user_email"] = email
+    upstream = await backend.put(f"/business-profiles/{profile_id}", json=body)
+    return await _proxy_json(upstream)
+
+
+@app.post("/api/business-profiles/{profile_id}/activate")
+async def activate_business_profile_proxy(
+    profile_id: int,
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+) -> Response:
+    upstream = await backend.post(f"/business-profiles/{profile_id}/activate", json={"user_email": email})
+    return await _proxy_json(upstream)
+
+
+@app.delete("/api/business-profiles/{profile_id}")
+async def delete_business_profile_proxy(
+    profile_id: int,
+    email: str = Depends(require_firebase_login),
+    backend: httpx.AsyncClient = Depends(get_backend_client),
+) -> Response:
+    upstream = await backend.delete(f"/business-profiles/{profile_id}", params={"user_email": email})
     return await _proxy_json(upstream)
 
 
 class OnboardingRequest(BaseModel):
     answers: Dict[str, str]
+    # Editing an existing version in place vs. creating a new one -- see
+    # onboarding_synthesize below.
+    profile_id: Optional[int] = None
 
 
 @app.post("/api/onboarding/synthesize")
@@ -129,21 +178,26 @@ async def onboarding_synthesize(
         "/llm-usage/record", json={"input_tokens": plan.input_tokens, "output_tokens": plan.output_tokens}
     )
 
-    save_resp = await backend.put(
-        "/business-profile",
-        json={
-            "user_email": email,
-            "seller_type": plan.seller_type,
-            "product_niche": plan.product_niche,
-            "target_market": plan.target_market,
-            "sales_channels": plan.sales_channels,
-            "marketing_approach": plan.marketing_approach,
-            "budget_stage": plan.budget_stage,
-            "primary_category_id": plan.primary_category_id,
-            "summary": plan.summary,
-            "status": "complete",
-        },
-    )
+    profile_fields = {
+        "user_email": email,
+        "seller_type": plan.seller_type,
+        "product_niche": plan.product_niche,
+        "target_market": plan.target_market,
+        "sales_channels": plan.sales_channels,
+        "marketing_approach": plan.marketing_approach,
+        "budget_stage": plan.budget_stage,
+        "primary_category_id": plan.primary_category_id,
+        "summary": plan.summary,
+        "status": "complete",
+    }
+    if body.profile_id is not None:
+        # Editing an existing version in place -- doesn't change which
+        # version is active.
+        save_resp = await backend.put(f"/business-profiles/{body.profile_id}", json=profile_fields)
+    else:
+        # A fresh submission or an explicit "create new version" --
+        # becomes the active plan driving Products page defaults.
+        save_resp = await backend.post("/business-profiles", json={**profile_fields, "make_active": True})
     return await _proxy_json(save_resp)
 
 

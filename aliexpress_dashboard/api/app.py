@@ -36,9 +36,13 @@ from ..config import Settings, get_settings
 from ..dashboard import llm_usage
 from ..dashboard.business_profiles import (
     BusinessProfile,
+    create_business_profile,
     delete_business_profile,
-    get_business_profile,
-    upsert_business_profile,
+    get_active_business_profile,
+    get_business_profile_by_id,
+    list_business_profiles,
+    set_active_business_profile,
+    update_business_profile,
 )
 from ..dashboard.momentum import compute_momentum, load_observations_for_momentum
 from ..dashboard.queries import (
@@ -278,18 +282,56 @@ def remove_shortlist_product_route(
 
 
 @app.get("/business-profile", dependencies=[Depends(require_api_key)])
-def get_business_profile_route(
+def get_active_business_profile_route(
     user_email: str = Query(...),
     conn: sqlite3.Connection = Depends(get_db_connection),
 ) -> dict:
-    profile = get_business_profile(conn, user_email)
+    """The one version currently driving Products page defaults -- see
+    list/business-profiles below for every saved version."""
+    profile = get_active_business_profile(conn, user_email)
     if profile is None:
-        raise HTTPException(status_code=404, detail="No business profile for this user yet")
+        raise HTTPException(status_code=404, detail="No active business profile for this user yet")
     return asdict(profile)
 
 
-class BusinessProfileRequest(BaseModel):
+@app.get("/business-profiles", dependencies=[Depends(require_api_key)])
+def list_business_profiles_route(
+    user_email: str = Query(...),
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> list:
+    return [asdict(p) for p in list_business_profiles(conn, user_email)]
+
+
+class CreateBusinessProfileRequest(BaseModel):
     user_email: str
+    seller_type: Optional[str] = None
+    product_niche: Optional[str] = None
+    target_market: Optional[str] = None
+    sales_channels: List[str] = []
+    marketing_approach: List[str] = []
+    budget_stage: Optional[str] = None
+    experience_level: Optional[str] = None
+    primary_category_id: Optional[int] = None
+    summary: Optional[str] = None
+    status: str = "in_progress"
+    make_active: bool = True
+
+
+@app.post("/business-profiles", dependencies=[Depends(require_api_key)])
+def create_business_profile_route(
+    body: CreateBusinessProfileRequest,
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    """Always a new version -- never overwrites an existing row (unlike
+    the old single-profile-per-user PUT this replaced)."""
+    fields = body.model_dump(exclude={"make_active"})
+    profile = BusinessProfile(**fields)
+    profile_id = create_business_profile(conn, profile, make_active=body.make_active)
+    return asdict(get_business_profile_by_id(conn, profile_id))
+
+
+class UpdateBusinessProfileRequest(BaseModel):
+    user_email: str  # ownership check -- must match the profile being edited
     seller_type: Optional[str] = None
     product_niche: Optional[str] = None
     target_market: Optional[str] = None
@@ -302,22 +344,52 @@ class BusinessProfileRequest(BaseModel):
     status: str = "in_progress"
 
 
-@app.put("/business-profile", dependencies=[Depends(require_api_key)])
-def put_business_profile_route(
-    body: BusinessProfileRequest,
+def _require_owned_profile(conn: sqlite3.Connection, profile_id: int, user_email: str) -> BusinessProfile:
+    """404s (not 403) on a mismatch -- doesn't confirm to a caller whether
+    a profile id belonging to someone else even exists."""
+    existing = get_business_profile_by_id(conn, profile_id)
+    if existing is None or existing.user_email != user_email:
+        raise HTTPException(status_code=404, detail="No business profile with this id for this user")
+    return existing
+
+
+@app.put("/business-profiles/{profile_id}", dependencies=[Depends(require_api_key)])
+def update_business_profile_route(
+    profile_id: int,
+    body: UpdateBusinessProfileRequest,
     conn: sqlite3.Connection = Depends(get_db_connection),
 ) -> dict:
+    """Edits this specific version in place -- doesn't change which
+    version is active."""
+    _require_owned_profile(conn, profile_id, body.user_email)
     profile = BusinessProfile(**body.model_dump())
-    upsert_business_profile(conn, profile)
-    return asdict(profile)
+    update_business_profile(conn, profile_id, profile)
+    return asdict(get_business_profile_by_id(conn, profile_id))
 
 
-@app.delete("/business-profile", dependencies=[Depends(require_api_key)])
+class ActivateBusinessProfileRequest(BaseModel):
+    user_email: str
+
+
+@app.post("/business-profiles/{profile_id}/activate", dependencies=[Depends(require_api_key)])
+def activate_business_profile_route(
+    profile_id: int,
+    body: ActivateBusinessProfileRequest,
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    _require_owned_profile(conn, profile_id, body.user_email)
+    set_active_business_profile(conn, profile_id)
+    return asdict(get_business_profile_by_id(conn, profile_id))
+
+
+@app.delete("/business-profiles/{profile_id}", dependencies=[Depends(require_api_key)])
 def delete_business_profile_route(
+    profile_id: int,
     user_email: str = Query(...),
     conn: sqlite3.Connection = Depends(get_db_connection),
 ) -> dict:
-    delete_business_profile(conn, user_email)
+    _require_owned_profile(conn, profile_id, user_email)
+    delete_business_profile(conn, profile_id)
     return {"status": "ok"}
 
 

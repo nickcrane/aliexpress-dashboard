@@ -22,6 +22,9 @@ export function NavBar() {
     >
       <strong style={{ fontSize: "1.1rem" }}>AliExpress Product Research</strong>
       <nav style={{ display: "flex", gap: "1rem" }}>
+        <NavLink to="/onboarding" style={navStyle}>
+          Business Plan
+        </NavLink>
         <NavLink to="/" end style={navStyle}>
           Products
         </NavLink>
@@ -30,9 +33,6 @@ export function NavBar() {
         </NavLink>
         <NavLink to="/shortlists" style={navStyle}>
           Shortlists
-        </NavLink>
-        <NavLink to="/onboarding" style={navStyle}>
-          Business Plan
         </NavLink>
       </nav>
       {user && (

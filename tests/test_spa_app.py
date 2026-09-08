@@ -126,28 +126,43 @@ def test_spa_fallback_serves_real_files_directly(client, tmp_path, monkeypatch):
 
 def test_business_profile_proxy_requires_login(client):
     assert client.get("/api/business-profile").status_code == 401
-    assert client.put("/api/business-profile", json={}).status_code == 401
+    assert client.get("/api/business-profiles").status_code == 401
+    assert client.post("/api/business-profiles", json={}).status_code == 401
 
 
-def test_business_profile_proxy_uses_verified_email_not_client_supplied(client):
+def test_create_business_profile_proxy_uses_verified_email_not_client_supplied(client):
     # The core security property: a client claiming to be someone else in
     # the request body must not be able to write to that user's profile.
     app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
-    response = client.put(
-        "/api/business-profile",
+    response = client.post(
+        "/api/business-profiles",
         json={"user_email": "someone-else@example.com", "seller_type": "reseller"},
     )
     assert response.status_code == 200
     assert response.json()["user_email"] == "allowed@example.com"
 
 
-def test_business_profile_proxy_round_trip(client):
+def test_update_business_profile_proxy_uses_verified_email_not_client_supplied(client):
     app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
-    put_response = client.put(
-        "/api/business-profile",
+    created = client.post("/api/business-profiles", json={"seller_type": "reseller"}).json()
+
+    # A different verified caller must not be able to edit this profile,
+    # even if they claim (correctly or not) to be its owner in the body.
+    app.dependency_overrides[require_firebase_login] = lambda: "attacker@example.com"
+    response = client.put(
+        f"/api/business-profiles/{created['id']}",
+        json={"user_email": "allowed@example.com", "seller_type": "hijacked"},
+    )
+    assert response.status_code == 404
+
+
+def test_business_profile_proxy_create_and_get_round_trip(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    create_response = client.post(
+        "/api/business-profiles",
         json={"seller_type": "content_creator", "product_niche": "kitchen gadgets"},
     )
-    assert put_response.status_code == 200
+    assert create_response.status_code == 200
 
     get_response = client.get("/api/business-profile")
     assert get_response.status_code == 200
@@ -156,6 +171,27 @@ def test_business_profile_proxy_round_trip(client):
 
 def test_business_profile_proxy_404_when_none_saved(client):
     app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    assert client.get("/api/business-profile").status_code == 404
+
+
+def test_business_profile_proxy_list_and_activate(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    first = client.post("/api/business-profiles", json={"seller_type": "reseller"}).json()
+    client.post("/api/business-profiles", json={"seller_type": "influencer"})
+
+    versions = client.get("/api/business-profiles").json()
+    assert len(versions) == 2
+
+    activate_response = client.post(f"/api/business-profiles/{first['id']}/activate")
+    assert activate_response.status_code == 200
+    assert client.get("/api/business-profile").json()["id"] == first["id"]
+
+
+def test_business_profile_proxy_delete(client):
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    created = client.post("/api/business-profiles", json={"seller_type": "reseller"}).json()
+    delete_response = client.delete(f"/api/business-profiles/{created['id']}")
+    assert delete_response.status_code == 200
     assert client.get("/api/business-profile").status_code == 404
 
 

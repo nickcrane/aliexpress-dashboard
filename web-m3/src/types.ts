@@ -81,6 +81,7 @@ export interface ShortlistSummary {
 }
 
 export interface BusinessProfile {
+  id: number;
   user_email: string;
   seller_type: string | null;
   product_niche: string | null;
@@ -92,4 +93,7 @@ export interface BusinessProfile {
   primary_category_id: number | null;
   summary: string | null;
   status: "in_progress" | "complete";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }

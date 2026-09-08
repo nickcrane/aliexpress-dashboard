@@ -112,8 +112,8 @@ export const api = {
     request<{ status: string }>(`/shortlists/${shortlistId}`, { method: "DELETE" }),
 
   getBusinessProfile: async (): Promise<BusinessProfile | null> => {
-    // Not a shared `request()` call: no business profile yet is a normal
-    // state (every new user starts here), not an error to throw on.
+    // Not a shared `request()` call: no active business profile yet is a
+    // normal state (every new user starts here), not an error to throw on.
     const response = await fetchOnce("/business-profile", {});
     if (response.status === 404) return null;
     if (!response.ok) {
@@ -122,9 +122,17 @@ export const api = {
     return response.json();
   },
 
-  synthesizeOnboarding: (answers: Record<string, string>) =>
+  listBusinessProfiles: () => request<BusinessProfile[]>("/business-profiles"),
+
+  activateBusinessProfile: (profileId: number) =>
+    request<BusinessProfile>(`/business-profiles/${profileId}/activate`, { method: "POST" }),
+
+  deleteBusinessProfile: (profileId: number) =>
+    request<{ status: string }>(`/business-profiles/${profileId}`, { method: "DELETE" }),
+
+  synthesizeOnboarding: (answers: Record<string, string>, profileId?: number) =>
     request<BusinessProfile>("/onboarding/synthesize", {
       method: "POST",
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify({ answers, profile_id: profileId ?? null }),
     }),
 };

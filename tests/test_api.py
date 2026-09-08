@@ -240,7 +240,7 @@ def test_get_business_profile_404_when_none_saved(tmp_path):
     assert response.status_code == 404
 
 
-def test_put_then_get_business_profile_round_trips(tmp_path):
+def test_create_then_get_active_business_profile_round_trips(tmp_path):
     client = _client_with_settings(_settings(tmp_path))
     body = {
         "user_email": "seller@example.com",
@@ -252,8 +252,10 @@ def test_put_then_get_business_profile_round_trips(tmp_path):
         "summary": "A content creator selling kitchen gadgets.",
         "status": "complete",
     }
-    put_response = _auth(client, "put", "/business-profile", json=body)
-    assert put_response.status_code == 200
+    create_response = _auth(client, "post", "/business-profiles", json=body)
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["is_active"] is True
 
     get_response = _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"})
     assert get_response.status_code == 200
@@ -261,27 +263,113 @@ def test_put_then_get_business_profile_round_trips(tmp_path):
     assert profile["seller_type"] == "content_creator"
     assert profile["sales_channels"] == ["tiktok_shop"]
     assert profile["status"] == "complete"
+    assert profile["id"] == created["id"]
 
 
-def test_put_business_profile_upserts_by_email(tmp_path):
+def test_create_business_profile_never_overwrites_a_previous_version(tmp_path):
     client = _client_with_settings(_settings(tmp_path))
-    _auth(client, "put", "/business-profile", json={"user_email": "seller@example.com", "seller_type": "reseller"})
+    first = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com", "seller_type": "reseller"}
+    ).json()
+    second = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com", "seller_type": "influencer"}
+    ).json()
+    assert first["id"] != second["id"]
+
+    versions = _auth(client, "get", "/business-profiles", params={"user_email": "seller@example.com"}).json()
+    assert {v["id"] for v in versions} == {first["id"], second["id"]}
+
+    # Only the newest is active by default.
+    active = _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).json()
+    assert active["id"] == second["id"]
+
+
+def test_create_business_profile_can_skip_becoming_active(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
     _auth(
         client,
+        "post",
+        "/business-profiles",
+        json={"user_email": "seller@example.com", "seller_type": "reseller", "make_active": False},
+    )
+    assert _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).status_code == 404
+
+
+def test_update_business_profile_edits_in_place_without_changing_active_version(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    created = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com", "seller_type": "reseller"}
+    ).json()
+
+    update_response = _auth(
+        client,
         "put",
-        "/business-profile",
+        f"/business-profiles/{created['id']}",
         json={"user_email": "seller@example.com", "seller_type": "influencer"},
     )
-    profile = _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).json()
-    assert profile["seller_type"] == "influencer"
+    assert update_response.status_code == 200
+    assert update_response.json()["seller_type"] == "influencer"
+    assert update_response.json()["is_active"] is True  # unchanged by an edit
+
+    versions = _auth(client, "get", "/business-profiles", params={"user_email": "seller@example.com"}).json()
+    assert len(versions) == 1  # edited in place, not a new row
+
+
+def test_update_business_profile_rejects_editing_someone_elses(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    created = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com", "seller_type": "reseller"}
+    ).json()
+    response = _auth(
+        client,
+        "put",
+        f"/business-profiles/{created['id']}",
+        json={"user_email": "attacker@example.com", "seller_type": "hijacked"},
+    )
+    assert response.status_code == 404
+
+
+def test_activate_business_profile_switches_which_version_is_active(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    first = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com", "seller_type": "reseller"}
+    ).json()
+    _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com", "seller_type": "influencer"}
+    )
+    # second is active now; switch back to the first.
+    activate_response = _auth(
+        client,
+        "post",
+        f"/business-profiles/{first['id']}/activate",
+        json={"user_email": "seller@example.com"},
+    )
+    assert activate_response.status_code == 200
+    active = _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).json()
+    assert active["id"] == first["id"]
 
 
 def test_delete_business_profile(tmp_path):
     client = _client_with_settings(_settings(tmp_path))
-    _auth(client, "put", "/business-profile", json={"user_email": "seller@example.com"})
-    delete_response = _auth(client, "delete", "/business-profile", params={"user_email": "seller@example.com"})
+    created = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com"}
+    ).json()
+    delete_response = _auth(
+        client, "delete", f"/business-profiles/{created['id']}", params={"user_email": "seller@example.com"}
+    )
     assert delete_response.status_code == 200
     assert _auth(client, "get", "/business-profile", params={"user_email": "seller@example.com"}).status_code == 404
+
+
+def test_delete_business_profile_rejects_deleting_someone_elses(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    created = _auth(
+        client, "post", "/business-profiles", json={"user_email": "seller@example.com"}
+    ).json()
+    response = _auth(
+        client, "delete", f"/business-profiles/{created['id']}", params={"user_email": "attacker@example.com"}
+    )
+    assert response.status_code == 404
 
 
 def test_llm_usage_current_month_starts_at_zero(tmp_path):
