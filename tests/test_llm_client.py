@@ -114,9 +114,14 @@ def test_synthesize_sends_forced_tool_choice_and_category_names():
     assert stub.calls["tool_choice"] == {"type": "tool", "name": "submit_business_plan"}
     tool = stub.calls["tools"][0]
     assert tool["strict"] is True
-    category_enum = tool["input_schema"]["properties"]["primary_category_name"]["enum"]
+    # Nullable enum fields are anyOf: [{type: string, enum: [...]}, {type: null}]
+    # -- confirmed live that the plain type:["string","null"]+enum shorthand
+    # is rejected by Anthropic's strict schema validator.
+    category_field = tool["input_schema"]["properties"]["primary_category_name"]
+    category_enum = category_field["anyOf"][0]["enum"]
     assert "Consumer Electronics" in category_enum
     assert "Tools" in category_enum
+    assert category_field["anyOf"][1] == {"type": "null"}
 
 
 def test_format_answers_skips_empty_values():

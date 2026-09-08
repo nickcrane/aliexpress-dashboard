@@ -56,6 +56,18 @@ class SynthesizedPlan:
     output_tokens: int = 0
 
 
+def _nullable_string(enum: Optional[List[str]] = None) -> dict:
+    """A nullable string field, matching Anthropic's strict tool schema
+    validator -- confirmed live that the shorthand `"type": ["string",
+    "null"]` (valid plain JSON Schema) is rejected there, with `enum`
+    especially ("Enum value ... does not match declared type
+    '[\\'string\\', \\'null\\']'"): anyOf is the form it actually accepts."""
+    string_schema: dict = {"type": "string"}
+    if enum is not None:
+        string_schema["enum"] = enum
+    return {"anyOf": [string_schema, {"type": "null"}]}
+
+
 def _build_tool(category_names: List[str]) -> dict:
     return {
         "name": "submit_business_plan",
@@ -64,13 +76,13 @@ def _build_tool(category_names: List[str]) -> dict:
         "input_schema": {
             "type": "object",
             "properties": {
-                "seller_type": {"type": ["string", "null"], "enum": _SELLER_TYPES + [None]},
-                "product_niche": {"type": ["string", "null"]},
-                "target_market": {"type": ["string", "null"]},
+                "seller_type": _nullable_string(_SELLER_TYPES),
+                "product_niche": _nullable_string(),
+                "target_market": _nullable_string(),
                 "sales_channels": {"type": "array", "items": {"type": "string", "enum": _SALES_CHANNELS}},
                 "marketing_approach": {"type": "array", "items": {"type": "string", "enum": _MARKETING_APPROACHES}},
-                "budget_stage": {"type": ["string", "null"], "enum": _BUDGET_STAGES + [None]},
-                "primary_category_name": {"type": ["string", "null"], "enum": category_names + [None]},
+                "budget_stage": _nullable_string(_BUDGET_STAGES),
+                "primary_category_name": _nullable_string(category_names),
                 "summary": {"type": "string"},
             },
             "required": [
