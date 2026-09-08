@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import List, Optional
 
@@ -263,13 +264,26 @@ class AliClient:
     def refresh_access_token(self) -> TokenSet:
         if self._token is None or not self._token.refresh_token:
             raise TokenMissingError("No refresh token on file -- run the authorize step again.")
+        previous_refresh_token = self._token.refresh_token
         if self._settings.mode == "fixture":
             envelope = self._load_fixture(self._settings.fixtures_dir / "auth" / "token_refresh.json")
         else:
             request = _AuthTokenRefreshRequest()
-            request.refresh_token = self._token.refresh_token
+            request.refresh_token = previous_refresh_token
             envelope = _call_ds_api(request)
         token = _token_set_from_envelope(envelope)
+        if not token.refresh_token:
+            # A refresh response that doesn't rotate the refresh token
+            # (i.e. doesn't repeat it in the response) would otherwise
+            # silently overwrite a still-valid refresh_token with None on
+            # disk here, permanently breaking every refresh attempt after
+            # the first successful one until a full re-authorization --
+            # matches a real incident's exact symptom (one successful
+            # refresh, then "IllegalRefreshToken" on every one after).
+            # Keeping the previous value is correct either way: a token
+            # that just successfully authenticated this request is still
+            # good regardless of whether this response happened to repeat it.
+            token = replace(token, refresh_token=previous_refresh_token)
         save_token(self._settings.token_path, token)
         self._token = token
         return token

@@ -1,6 +1,10 @@
+import json
+
 import pytest
 
 from aliexpress_dashboard.client import AliClient, FixtureNotFoundError, SearchParams
+from aliexpress_dashboard.client.models import TokenSet
+from aliexpress_dashboard.client.tokens import now_iso, save_token
 from aliexpress_dashboard.config import Settings
 
 
@@ -110,6 +114,54 @@ def test_refresh_access_token_updates_saved_token(tmp_path):
 
     refreshed = fixture_client.refresh_access_token()
     assert refreshed.access_token == "50000000-fixture-refreshed-access-token"
+
+
+def test_refresh_access_token_keeps_existing_refresh_token_when_response_omits_it(tmp_path):
+    """A live incident's exact symptom: one refresh succeeded, then every
+    refresh after failed with "IllegalRefreshToken" -- consistent with a
+    refresh response that doesn't repeat refresh_token when it isn't
+    rotated, which this app's code used to overwrite the still-good
+    stored one with None. Refresh must keep the previous refresh_token
+    when the response doesn't include a new one, not discard it."""
+    from aliexpress_dashboard.config import Settings as S
+
+    fixtures_dir = tmp_path / "fixtures"
+    (fixtures_dir / "auth").mkdir(parents=True)
+    (fixtures_dir / "auth" / "token_refresh.json").write_text(
+        json.dumps(
+            {
+                "/auth/token/refresh_response": {
+                    "access_token": "new-access-token-no-rotation",
+                    "expires_in": 86400,
+                    "request_id": "fixture-request-id",
+                    # No refresh_token key -- the response shape under test.
+                }
+            }
+        )
+    )
+
+    token_path = tmp_path / "token.json"
+    save_token(
+        token_path,
+        TokenSet(
+            access_token="old-access-token",
+            refresh_token="still-good-refresh-token",
+            expires_in=86400,
+            refresh_expires_in=172800,
+            obtained_at=now_iso(),
+        ),
+    )
+
+    fixture_client = AliClient(S(mode="fixture", token_path=token_path, fixtures_dir=fixtures_dir))
+    refreshed = fixture_client.refresh_access_token()
+
+    assert refreshed.access_token == "new-access-token-no-rotation"
+    assert refreshed.refresh_token == "still-good-refresh-token"
+
+    # And the fix actually persists to disk, not just the in-memory token.
+    from aliexpress_dashboard.client.tokens import load_token
+
+    assert load_token(token_path).refresh_token == "still-good-refresh-token"
 
 
 # -- envelope unwrapping / success-code checks -------------------------------
