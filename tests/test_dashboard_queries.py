@@ -8,6 +8,7 @@ from aliexpress_dashboard.config import Settings
 from aliexpress_dashboard.dashboard.queries import (
     ProductFilters,
     category_tree,
+    category_tree_coverage,
     distinct_categories,
     distinct_ship_to_countries,
     distinct_target_currencies,
@@ -295,3 +296,38 @@ def test_load_current_products_filter_tolerates_null_ancestor_ids(tmp_path):
 
     df = load_current_products(conn, ProductFilters(category_id=1509))
     assert df["product_id"].tolist() == [1]  # still matches via the plain category_id equality branch
+
+
+def test_category_tree_coverage_compares_shown_against_full_synced_set(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    # Three synced top-level categories, only one reachable by a product.
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=44, category_name="Consumer Electronics"),
+            NormalizedCategory(category_id=200003803, category_name="Smart Electronics", parent_category_id=44),
+            NormalizedCategory(category_id=15, category_name="Home & Garden"),
+            NormalizedCategory(category_id=30, category_name="Security & Protection"),
+        ],
+    )
+    _upsert_product_with_ancestors(conn, product_id=1, category_id=200003803, category_ancestor_ids=[44, 200003803])
+
+    coverage = category_tree_coverage(conn)
+    assert coverage == {
+        "parent_categories_shown": 1,
+        "parent_categories_synced_total": 3,
+        "child_categories_shown": 1,
+        "categories_synced_total": 4,
+    }
+
+
+def test_category_tree_coverage_on_empty_database(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    assert category_tree_coverage(conn) == {
+        "parent_categories_shown": 0,
+        "parent_categories_synced_total": 0,
+        "child_categories_shown": 0,
+        "categories_synced_total": 0,
+    }

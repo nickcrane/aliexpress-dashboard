@@ -36,6 +36,7 @@ from ..dashboard.momentum import compute_momentum, load_observations_for_momentu
 from ..dashboard.queries import (
     ProductFilters,
     category_tree,
+    category_tree_coverage,
     distinct_categories,
     distinct_ship_to_countries,
     distinct_target_currencies,
@@ -184,6 +185,9 @@ def filters(conn: sqlite3.Connection = Depends(get_db_connection)) -> dict:
         # dashboard/queries.py:category_tree. "categories" above stays as
         # the flat list for the legacy Bootstrap app's single dropdown.
         "category_tree": category_tree(conn),
+        # How many of the fully-synced categories table's parents actually
+        # show up above, vs. the total -- see category_tree_coverage.
+        "category_tree_coverage": category_tree_coverage(conn),
         "currencies": distinct_target_currencies(conn),
         "ship_to_countries": distinct_ship_to_countries(conn),
     }

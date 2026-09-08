@@ -127,6 +127,30 @@ def category_tree(conn: sqlite3.Connection) -> List[dict]:
     return sorted(tree.values(), key=lambda n: n["category_name"])
 
 
+def category_tree_coverage(conn: sqlite3.Connection) -> dict:
+    """How much of the synced `categories` table category_tree's parent
+    dropdown actually shows, vs. the full set sync-categories pulled
+    from AliExpress -- explains why the picker's parent list is usually
+    much shorter than AliExpress's real top-level category count: only
+    categories reachable by at least one *collected* product show up
+    (see category_tree), and this app's collector has typically only
+    run a handful of searches, not exhaustively covered the catalog.
+    Grows on its own as more/broader collector runs bring in products
+    from categories not seen yet -- no action needed beyond collecting
+    more, if a wider parent list is wanted."""
+    total_parents = conn.execute(
+        "SELECT COUNT(*) AS n FROM categories WHERE parent_category_id IS NULL"
+    ).fetchone()["n"]
+    total_categories = conn.execute("SELECT COUNT(*) AS n FROM categories").fetchone()["n"]
+    tree = category_tree(conn)
+    return {
+        "parent_categories_shown": len(tree),
+        "parent_categories_synced_total": total_parents,
+        "child_categories_shown": sum(len(node["children"]) for node in tree),
+        "categories_synced_total": total_categories,
+    }
+
+
 def distinct_ship_to_countries(conn: sqlite3.Connection) -> List[str]:
     rows = conn.execute(
         "SELECT DISTINCT ship_to_country FROM searches "

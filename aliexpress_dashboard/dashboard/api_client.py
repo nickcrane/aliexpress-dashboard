@@ -36,6 +36,7 @@ class FilterOptions:
     # dropdown, but must be declared here since FilterOptions(**data)
     # unpacks every key /filters returns.
     category_tree: List[dict]
+    category_tree_coverage: dict  # see dashboard/queries.py:category_tree_coverage
     currencies: List[str]
     ship_to_countries: List[str]
 
