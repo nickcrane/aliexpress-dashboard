@@ -17,6 +17,7 @@ def test_migrations_apply_cleanly(tmp_path):
         "0005_business_profiles.sql",
         "0006_business_profile_versions.sql",
         "0007_market_gap_analysis.sql",
+        "0008_opportunity_snapshot.sql",
     ]
 
     tables = {

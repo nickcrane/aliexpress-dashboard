@@ -196,6 +196,11 @@ async def onboarding_synthesize(
         "primary_category_id": body.primary_category_id,
         "summary": plan.summary,
         "market_gap_analysis": plan.market_gap_analysis,
+        # Frozen alongside the prose above so the plan view's numbers never
+        # drift from what market_gap_analysis actually describes -- only
+        # kept when there was real data behind it (see category_market_stats).
+        "category_stats_snapshot": market_stats if market_stats and market_stats.get("product_count") else None,
+        "tiktok_shop_angle": plan.tiktok_shop_angle,
         "status": "complete",
     }
     if body.profile_id is not None:

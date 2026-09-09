@@ -52,6 +52,17 @@ Call submit_business_plan exactly once with your extraction. Rules:
   avoid. Never invent competitor names, market-size figures, or numbers
   not present in the supplied stats. If no stats are provided, set this
   field to null -- don't write a generic answer.
+- tiktok_shop_angle: 2-3 plain-English sentences on why/how this product
+  could suit TikTok Shop specifically -- e.g. how demo-able it is on
+  camera, whether its price point suits impulse buys, whether it fits
+  short-form unboxing/before-after content. Base this ONLY on general,
+  widely-known patterns about what tends to work in short-form-video
+  commerce and on the product/category info you were actually given.
+  You do NOT have real data on any specific TikTok Shop seller, creator,
+  or product's performance -- NEVER name a real company, creator, or
+  product as a "similar success," and never state a specific sales,
+  revenue, or follower figure as fact. If you can't say anything grounded
+  and non-generic, set this field to null.
 - Never give financial, legal, or tax advice.
 """
 
@@ -70,6 +81,7 @@ _TOOL = {
             "budget_stage": {"anyOf": [{"type": "string", "enum": _BUDGET_STAGES}, {"type": "null"}]},
             "summary": {"type": "string"},
             "market_gap_analysis": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "tiktok_shop_angle": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         },
         "required": [
             "seller_type",
@@ -80,6 +92,7 @@ _TOOL = {
             "budget_stage",
             "summary",
             "market_gap_analysis",
+            "tiktok_shop_angle",
         ],
         "additionalProperties": False,
     },
@@ -96,6 +109,7 @@ class SynthesizedPlan:
     budget_stage: Optional[str] = None
     summary: str = ""
     market_gap_analysis: Optional[str] = None
+    tiktok_shop_angle: Optional[str] = None
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -181,6 +195,7 @@ async def synthesize_business_plan(
         budget_stage=plan.get("budget_stage"),
         summary=plan.get("summary") or "",
         market_gap_analysis=plan.get("market_gap_analysis"),
+        tiktok_shop_angle=plan.get("tiktok_shop_angle"),
         input_tokens=response.usage.input_tokens,
         output_tokens=response.usage.output_tokens,
     )

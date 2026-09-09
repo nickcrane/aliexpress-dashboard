@@ -260,6 +260,7 @@ def test_onboarding_synthesize_happy_path(client, monkeypatch):
             budget_stage="just_starting",
             summary="A content creator selling kitchen gadgets.",
             market_gap_analysis="The under-£5 band is saturated; £8+ has less competition.",
+            tiktok_shop_angle="Small kitchen gadgets suit quick demo-style unboxing clips.",
             input_tokens=500,
             output_tokens=150,
         )
@@ -281,6 +282,10 @@ def test_onboarding_synthesize_happy_path(client, monkeypatch):
     # the LLM -- passed straight through.
     assert body["primary_category_id"] == 1420
     assert body["market_gap_analysis"] == "The under-£5 band is saturated; £8+ has less competition."
+    assert body["tiktok_shop_angle"] == "Small kitchen gadgets suit quick demo-style unboxing clips."
+    # Category 1420 has no collected products in this fixture -- no real
+    # stats behind the numbers, so nothing gets frozen into the snapshot.
+    assert body["category_stats_snapshot"] is None
 
     # Usage got recorded against the real backend: $1/1M*500 + $5/1M*150
     usage = client.get("/api/llm-usage/current-month")
@@ -311,6 +316,12 @@ def test_onboarding_synthesize_fetches_real_market_stats_for_the_chosen_category
     assert response.status_code == 200
     assert captured["market_stats"]["product_count"] == 1
     assert captured["market_stats"]["price_min"] == 2.49
+
+    # The same stats get frozen onto the saved profile, for the plan view
+    # to show without a live re-query drifting from the LLM's prose.
+    body = response.json()
+    assert body["category_stats_snapshot"]["product_count"] == 1
+    assert body["category_stats_snapshot"]["price_min"] == 2.49
 
 
 def test_onboarding_synthesize_without_a_category_sends_no_market_stats(client, monkeypatch):

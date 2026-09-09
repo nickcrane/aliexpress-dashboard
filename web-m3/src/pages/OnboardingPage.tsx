@@ -407,6 +407,7 @@ function PlanView({
   );
   const hasOpportunity = Boolean(activeProfile.product_niche || activeProfile.target_market);
   const hasGoToMarket = salesLabels.length > 0 || marketingLabels.length > 0;
+  const stats = activeProfile.category_stats_snapshot;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
@@ -437,6 +438,22 @@ function PlanView({
               {activeProfile.target_market && <strong>{activeProfile.target_market}</strong>}
               {(activeProfile.product_niche || activeProfile.target_market) && "."}
             </p>
+            {stats && stats.product_count > 0 && (
+              <div style={{ fontSize: "0.8rem", color: "var(--md-sys-color-on-surface-variant)" }}>
+                {[
+                  `${stats.product_count} tracked listing${stats.product_count === 1 ? "" : "s"}`,
+                  stats.price_min != null && stats.price_max != null
+                    ? `${stats.price_min}–${stats.price_max} ${stats.price_currency ?? ""} (median ${
+                        stats.price_median
+                      } ${stats.price_currency ?? ""})`
+                    : null,
+                  stats.avg_positive_feedback_pct != null ? `${stats.avg_positive_feedback_pct}% avg feedback` : null,
+                  stats.avg_discount_pct != null ? `${stats.avg_discount_pct}% avg discount` : null,
+                ]
+                  .filter(Boolean)
+                  .join("  ·  ")}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -463,6 +480,33 @@ function PlanView({
             <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-on-surface-variant)" }}>
               Based on {categoryName ?? "the selected category"}'s currently tracked listings -- price, demand, and
               competition signals, not guesswork.
+            </span>
+          </div>
+        </>
+      )}
+
+      {activeProfile.tiktok_shop_angle && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <SectionHeading>Why TikTok Shop</SectionHeading>
+            <div
+              style={{
+                background: "var(--md-sys-color-secondary-container)",
+                color: "var(--md-sys-color-on-secondary-container)",
+                borderRadius: "var(--md-sys-shape-corner-medium)",
+                padding: "1rem 1.1rem",
+                lineHeight: 1.6,
+              }}
+            >
+              <div style={{ fontSize: "1.1rem", marginBottom: "0.4rem" }} aria-hidden="true">
+                🎬
+              </div>
+              {activeProfile.tiktok_shop_angle}
+            </div>
+            <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-on-surface-variant)" }}>
+              General short-form-video commerce patterns, not a specific seller's real results -- no TikTok Shop
+              data source is connected here.
             </span>
           </div>
         </>

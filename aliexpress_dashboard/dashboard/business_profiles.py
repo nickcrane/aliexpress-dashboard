@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 _FIELDS = (
     "seller_type",
@@ -26,6 +26,8 @@ _FIELDS = (
     "primary_category_id",
     "summary",
     "market_gap_analysis",
+    "category_stats_snapshot",
+    "tiktok_shop_angle",
     "status",
 )
 
@@ -44,6 +46,13 @@ class BusinessProfile:
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
     market_gap_analysis: Optional[str] = None
+    # A frozen copy of the dashboard.queries.category_market_stats() dict
+    # this plan's market_gap_analysis was written from -- kept alongside
+    # the prose so the plan view can show real numbers next to it without
+    # a live re-query drifting from what the text describes as the
+    # collector brings in more products over time.
+    category_stats_snapshot: Optional[Dict[str, Any]] = None
+    tiktok_shop_angle: Optional[str] = None
     status: str = "in_progress"
     is_active: bool = False
     created_at: Optional[str] = None
@@ -64,6 +73,8 @@ def _row_to_profile(row: sqlite3.Row) -> BusinessProfile:
         primary_category_id=row["primary_category_id"],
         summary=row["summary"],
         market_gap_analysis=row["market_gap_analysis"],
+        category_stats_snapshot=json.loads(row["category_stats_snapshot"]) if row["category_stats_snapshot"] else None,
+        tiktok_shop_angle=row["tiktok_shop_angle"],
         status=row["status"],
         is_active=bool(row["is_active"]),
         created_at=row["created_at"],
@@ -102,6 +113,10 @@ def _values(profile: BusinessProfile) -> dict:
         "primary_category_id": profile.primary_category_id,
         "summary": profile.summary,
         "market_gap_analysis": profile.market_gap_analysis,
+        "category_stats_snapshot": json.dumps(profile.category_stats_snapshot)
+        if profile.category_stats_snapshot
+        else None,
+        "tiktok_shop_angle": profile.tiktok_shop_angle,
         "status": profile.status,
     }
 

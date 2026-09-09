@@ -323,6 +323,8 @@ class CreateBusinessProfileRequest(BaseModel):
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
     market_gap_analysis: Optional[str] = None
+    category_stats_snapshot: Optional[dict] = None
+    tiktok_shop_angle: Optional[str] = None
     status: str = "in_progress"
     make_active: bool = True
 
@@ -352,6 +354,8 @@ class UpdateBusinessProfileRequest(BaseModel):
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
     market_gap_analysis: Optional[str] = None
+    category_stats_snapshot: Optional[dict] = None
+    tiktok_shop_angle: Optional[str] = None
     status: str = "in_progress"
 
 

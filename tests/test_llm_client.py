@@ -69,6 +69,7 @@ def test_synthesize_maps_full_plan():
             "budget_stage": "just_starting",
             "summary": "A content creator selling kitchen gadgets via TikTok Shop.",
             "market_gap_analysis": "The $10-15 band has strong demand but few listings.",
+            "tiktok_shop_angle": "Compact kitchen gadgets demo well in quick before/after clips.",
         }
     )
     plan = _run(synthesize_business_plan(client=stub, wizard_answers={"niche": "kitchen gadgets"}))
@@ -78,6 +79,7 @@ def test_synthesize_maps_full_plan():
     assert plan.sales_channels == ["tiktok_shop"]
     assert plan.summary.startswith("A content creator")
     assert plan.market_gap_analysis == "The $10-15 band has strong demand but few listings."
+    assert plan.tiktok_shop_angle == "Compact kitchen gadgets demo well in quick before/after clips."
     assert plan.input_tokens == 500
     assert plan.output_tokens == 150
 
@@ -110,6 +112,8 @@ def test_synthesize_sends_forced_tool_choice():
     assert "primary_category_name" not in tool["input_schema"]["properties"]
     assert "market_gap_analysis" in tool["input_schema"]["properties"]
     assert "market_gap_analysis" in tool["input_schema"]["required"]
+    assert "tiktok_shop_angle" in tool["input_schema"]["properties"]
+    assert "tiktok_shop_angle" in tool["input_schema"]["required"]
     # Nullable fields are anyOf: [{type: string, ...}, {type: null}] --
     # confirmed live that the plain type:["string","null"] shorthand is
     # rejected by Anthropic's strict schema validator.
@@ -147,6 +151,20 @@ def test_synthesize_without_market_stats_says_none_available():
     _run(synthesize_business_plan(client=stub, wizard_answers={}))
 
     assert "No category market stats are available." in stub.calls["messages"][0]["content"]
+
+
+def test_system_prompt_bars_fabricated_tiktok_success_stories():
+    # Regression guard: this is the one field this app asks the LLM to
+    # write from general knowledge rather than supplied data (no real
+    # TikTok Shop data source is integrated -- see llm_client module
+    # docstring/session notes), so the instruction not to name real
+    # companies/creators or invent figures is load-bearing. Cheap text
+    # check rather than a live-model assertion.
+    from aliexpress_dashboard.client.llm_client import _SYSTEM_PROMPT
+
+    normalized = " ".join(_SYSTEM_PROMPT.split())
+    assert "NEVER name a real company, creator, or product" in normalized
+    assert "specific sales, revenue, or follower figure as fact" in normalized
 
 
 def test_format_answers_skips_empty_values():

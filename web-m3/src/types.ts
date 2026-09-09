@@ -80,6 +80,29 @@ export interface ShortlistSummary {
   item_count: number;
 }
 
+export interface CategoryPriceBand {
+  price_low: number;
+  price_high: number;
+  product_count: number;
+  avg_positive_feedback_pct: number | null;
+  median_sales_volume: number | null;
+}
+
+// A frozen dashboard.queries.category_market_stats() result -- see
+// BusinessProfile.category_stats_snapshot below.
+export interface CategoryMarketStats {
+  category_id: number;
+  product_count: number;
+  price_currency?: string | null;
+  price_min?: number | null;
+  price_median?: number | null;
+  price_max?: number | null;
+  avg_discount_pct?: number | null;
+  avg_positive_feedback_pct?: number | null;
+  median_sales_volume?: number | null;
+  price_bands: CategoryPriceBand[];
+}
+
 export interface BusinessProfile {
   id: number;
   user_email: string;
@@ -93,6 +116,14 @@ export interface BusinessProfile {
   primary_category_id: number | null;
   summary: string | null;
   market_gap_analysis: string | null;
+  // Frozen at the moment market_gap_analysis was written -- see
+  // spa/app.py's onboarding route -- so the numbers shown next to that
+  // prose never drift from what it actually describes.
+  category_stats_snapshot: CategoryMarketStats | null;
+  // General TikTok Shop content/commerce commentary -- deliberately never
+  // cites real companies/creators/figures (no such data source is wired
+  // up); see llm_client.py's system prompt.
+  tiktok_shop_angle: string | null;
   status: "in_progress" | "complete";
   is_active: boolean;
   created_at: string;
