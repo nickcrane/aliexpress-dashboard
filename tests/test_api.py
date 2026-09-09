@@ -189,6 +189,29 @@ def test_filters_max_price(tmp_path):
     assert response.json() == {"max_price": 9.99}
 
 
+def test_category_market_stats_route_requires_api_key(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    assert client.get("/categories/15/market-stats").status_code == 401
+
+
+def test_category_market_stats_route_reflects_seeded_data(tmp_path):
+    _seed_product(tmp_path, category_id=15)
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/categories/15/market-stats")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["category_id"] == 15
+    assert body["product_count"] == 1
+    assert body["price_min"] == 9.99
+
+
+def test_category_market_stats_route_on_category_with_no_products(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/categories/999999/market-stats")
+    assert response.status_code == 200
+    assert response.json() == {"category_id": 999999, "product_count": 0, "price_bands": []}
+
+
 def test_momentum_with_no_observations(tmp_path):
     client = _client_with_settings(_settings(tmp_path))
     response = _auth(client, "get", "/momentum", params={"product_ids": "1"})

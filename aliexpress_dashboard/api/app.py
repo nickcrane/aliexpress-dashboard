@@ -47,6 +47,7 @@ from ..dashboard.business_profiles import (
 from ..dashboard.momentum import compute_momentum, load_observations_for_momentum
 from ..dashboard.queries import (
     ProductFilters,
+    category_market_stats,
     category_tree,
     category_tree_coverage,
     distinct_categories,
@@ -205,6 +206,14 @@ def filters(conn: sqlite3.Connection = Depends(get_db_connection)) -> dict:
     }
 
 
+@app.get("/categories/{category_id}/market-stats", dependencies=[Depends(require_api_key)])
+def category_market_stats_route(
+    category_id: int,
+    conn: sqlite3.Connection = Depends(get_db_connection),
+) -> dict:
+    return category_market_stats(conn, category_id)
+
+
 @app.get("/filters/max-price", dependencies=[Depends(require_api_key)])
 def filters_max_price(
     currency: str = Query(...),
@@ -313,6 +322,7 @@ class CreateBusinessProfileRequest(BaseModel):
     experience_level: Optional[str] = None
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
+    market_gap_analysis: Optional[str] = None
     status: str = "in_progress"
     make_active: bool = True
 
@@ -341,6 +351,7 @@ class UpdateBusinessProfileRequest(BaseModel):
     experience_level: Optional[str] = None
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
+    market_gap_analysis: Optional[str] = None
     status: str = "in_progress"
 
 

@@ -7,6 +7,7 @@ from aliexpress_dashboard.collector.runner import run_collection
 from aliexpress_dashboard.config import Settings
 from aliexpress_dashboard.dashboard.queries import (
     ProductFilters,
+    category_market_stats,
     category_tree,
     category_tree_coverage,
     distinct_categories,
@@ -331,3 +332,52 @@ def test_category_tree_coverage_on_empty_database(tmp_path):
         "child_categories_shown": 0,
         "categories_synced_total": 0,
     }
+
+
+def test_category_market_stats_aggregates_the_categorys_products(seeded_conn):
+    # Category 1509 has exactly 2 GBP-priced products in the fixture data:
+    # 9.99 (47% discount, 94.5% feedback, 15234 sales) and 2.49 (38%
+    # discount, no feedback score, 0 sales).
+    stats = category_market_stats(seeded_conn, 1509)
+
+    assert stats["category_id"] == 1509
+    assert stats["product_count"] == 2
+    assert stats["price_currency"] == "GBP"
+    assert stats["price_min"] == 2.49
+    assert stats["price_max"] == 9.99
+    assert stats["price_median"] == pytest.approx(6.24)
+    assert stats["avg_discount_pct"] == pytest.approx(42.5)
+    # mean() skips the NaN feedback score -- only the 94.5 value counts.
+    assert stats["avg_positive_feedback_pct"] == 94.5
+    assert stats["median_sales_volume"] == pytest.approx(7617)
+    assert len(stats["price_bands"]) > 0
+    assert sum(band["product_count"] for band in stats["price_bands"]) == 2
+
+
+def test_category_market_stats_on_category_with_no_products(seeded_conn):
+    stats = category_market_stats(seeded_conn, 999999)
+    assert stats == {"category_id": 999999, "product_count": 0, "price_bands": []}
+
+
+def test_category_market_stats_includes_children_of_a_parent_category(tmp_path):
+    # Same ancestor-aware matching as load_current_products -- picking a
+    # parent id should pull in every product under it, not just an exact
+    # leaf-id match. discount/evaluate_rate/sales_volume are left unset
+    # (None) here, same as _upsert_product_with_ancestors's other uses --
+    # those should come back as None, not 0 or NaN, on a single-product
+    # category.
+    conn = get_connection(tmp_path / "test.db")
+    run_migrations(conn)
+    _upsert_product_with_ancestors(
+        conn, product_id=1, category_id=200332166, category_ancestor_ids=[44, 200003803, 200332166]
+    )
+
+    stats = category_market_stats(conn, 44)
+    assert stats["product_count"] == 1
+    assert stats["price_currency"] == "GBP"
+    assert stats["price_min"] == stats["price_max"] == 9.99
+    assert stats["avg_discount_pct"] is None
+    assert stats["avg_positive_feedback_pct"] is None
+    assert stats["median_sales_volume"] is None
+    assert len(stats["price_bands"]) == 1
+    assert stats["price_bands"][0]["product_count"] == 1

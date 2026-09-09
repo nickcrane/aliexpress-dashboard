@@ -92,6 +92,7 @@ export interface BusinessProfile {
   experience_level: string | null;
   primary_category_id: number | null;
   summary: string | null;
+  market_gap_analysis: string | null;
   status: "in_progress" | "complete";
   is_active: boolean;
   created_at: string;

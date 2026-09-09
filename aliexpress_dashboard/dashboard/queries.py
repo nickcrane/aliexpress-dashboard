@@ -201,6 +201,72 @@ def max_target_price(conn: sqlite3.Connection, currency: str) -> Optional[float]
     return row["max_price"] if row and row["max_price"] is not None else None
 
 
+def _safe_round(value, ndigits: int = 2) -> Optional[float]:
+    return None if value is None or pd.isna(value) else round(float(value), ndigits)
+
+
+def category_market_stats(conn: sqlite3.Connection, category_id: int, *, price_bands: int = 4) -> dict:
+    """Aggregate signal for one category's currently-collected products --
+    feeds the onboarding LLM's market gap analysis (spa/app.py). Reuses
+    load_current_products so a parent category id picks up every child
+    under it, exactly like the Products page filter does.
+
+    avg_rating/review_count are deliberately excluded: this collector
+    only ever populates them via per-product detail lookups, which
+    nothing here currently runs, so they're 0% populated on real data
+    (confirmed against the live DB) -- evaluate_rate (positive-feedback
+    %) is the rating signal search results actually carry.
+    """
+    df = load_current_products(conn, ProductFilters(category_id=category_id))
+    if df.empty:
+        return {"category_id": category_id, "product_count": 0, "price_bands": []}
+
+    # Price stats only make sense within one currency -- collected
+    # products can mix currencies across searches run with different
+    # settings, and averaging across them would be meaningless. Use
+    # whichever currency most of this category's products were priced in.
+    currency_counts = df["target_sale_price_currency"].value_counts()
+    dominant_currency = str(currency_counts.index[0]) if not currency_counts.empty else None
+    priced = df[df["target_sale_price_currency"] == dominant_currency] if dominant_currency else df.iloc[0:0]
+    prices = priced["target_sale_price"].dropna()
+
+    bands: List[dict] = []
+    if len(prices) > 0:
+        low, high = float(prices.min()), float(prices.max())
+        width = (high - low) / price_bands if high > low else 0
+        for i in range(price_bands):
+            band_low = low + width * i
+            band_high = high if i == price_bands - 1 else low + width * (i + 1)
+            if i == price_bands - 1:
+                in_band = priced[(priced["target_sale_price"] >= band_low) & (priced["target_sale_price"] <= band_high)]
+            else:
+                in_band = priced[(priced["target_sale_price"] >= band_low) & (priced["target_sale_price"] < band_high)]
+            if in_band.empty:
+                continue
+            bands.append(
+                {
+                    "price_low": round(band_low, 2),
+                    "price_high": round(band_high, 2),
+                    "product_count": int(len(in_band)),
+                    "avg_positive_feedback_pct": _safe_round(in_band["evaluate_rate"].mean()),
+                    "median_sales_volume": _safe_round(in_band["sales_volume"].median(), 0),
+                }
+            )
+
+    return {
+        "category_id": category_id,
+        "product_count": int(len(df)),
+        "price_currency": dominant_currency,
+        "price_min": _safe_round(prices.min()) if len(prices) else None,
+        "price_median": _safe_round(prices.median()) if len(prices) else None,
+        "price_max": _safe_round(prices.max()) if len(prices) else None,
+        "avg_discount_pct": _safe_round(df["discount"].mean()),
+        "avg_positive_feedback_pct": _safe_round(df["evaluate_rate"].mean()),
+        "median_sales_volume": _safe_round(df["sales_volume"].median(), 0),
+        "price_bands": bands,
+    }
+
+
 def load_current_products(conn: sqlite3.Connection, filters: ProductFilters) -> pd.DataFrame:
     clauses = []
     params: dict = {}

@@ -441,6 +441,33 @@ function PlanView({
         </>
       )}
 
+      {activeProfile.market_gap_analysis && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <SectionHeading>Market gap analysis</SectionHeading>
+            <div
+              style={{
+                background: "var(--md-sys-color-tertiary-container)",
+                color: "var(--md-sys-color-on-tertiary-container)",
+                borderRadius: "var(--md-sys-shape-corner-medium)",
+                padding: "1rem 1.1rem",
+                lineHeight: 1.6,
+              }}
+            >
+              <div style={{ fontSize: "1.1rem", marginBottom: "0.4rem" }} aria-hidden="true">
+                🔎
+              </div>
+              {activeProfile.market_gap_analysis}
+            </div>
+            <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-on-surface-variant)" }}>
+              Based on {categoryName ?? "the selected category"}'s currently tracked listings -- price, demand, and
+              competition signals, not guesswork.
+            </span>
+          </div>
+        </>
+      )}
+
       {hasGoToMarket && (
         <>
           <Divider />

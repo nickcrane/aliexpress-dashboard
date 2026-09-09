@@ -164,8 +164,16 @@ async def onboarding_synthesize(
             },
         )
 
+    market_stats = None
+    if body.primary_category_id is not None:
+        stats_resp = await backend.get(f"/categories/{body.primary_category_id}/market-stats")
+        if stats_resp.status_code == 200:
+            market_stats = stats_resp.json()
+
     try:
-        plan = await synthesize_business_plan(api_key=settings.anthropic_api_key, wizard_answers=body.answers)
+        plan = await synthesize_business_plan(
+            api_key=settings.anthropic_api_key, wizard_answers=body.answers, market_stats=market_stats
+        )
     except anthropic.RateLimitError as exc:
         return JSONResponse(status_code=429, content={"detail": f"Business plan assistant is busy: {exc}"})
     except anthropic.APIStatusError as exc:
@@ -187,6 +195,7 @@ async def onboarding_synthesize(
         "budget_stage": plan.budget_stage,
         "primary_category_id": body.primary_category_id,
         "summary": plan.summary,
+        "market_gap_analysis": plan.market_gap_analysis,
         "status": "complete",
     }
     if body.profile_id is not None:

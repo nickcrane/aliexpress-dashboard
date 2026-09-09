@@ -25,6 +25,7 @@ _FIELDS = (
     "experience_level",
     "primary_category_id",
     "summary",
+    "market_gap_analysis",
     "status",
 )
 
@@ -42,6 +43,7 @@ class BusinessProfile:
     experience_level: Optional[str] = None
     primary_category_id: Optional[int] = None
     summary: Optional[str] = None
+    market_gap_analysis: Optional[str] = None
     status: str = "in_progress"
     is_active: bool = False
     created_at: Optional[str] = None
@@ -61,6 +63,7 @@ def _row_to_profile(row: sqlite3.Row) -> BusinessProfile:
         experience_level=row["experience_level"],
         primary_category_id=row["primary_category_id"],
         summary=row["summary"],
+        market_gap_analysis=row["market_gap_analysis"],
         status=row["status"],
         is_active=bool(row["is_active"]),
         created_at=row["created_at"],
@@ -98,6 +101,7 @@ def _values(profile: BusinessProfile) -> dict:
         "experience_level": profile.experience_level,
         "primary_category_id": profile.primary_category_id,
         "summary": profile.summary,
+        "market_gap_analysis": profile.market_gap_analysis,
         "status": profile.status,
     }
 

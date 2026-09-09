@@ -35,7 +35,17 @@ def seeded_db(tmp_path):
     saved = store.get_search_by_name(conn, "home-gadgets-under-15-gbp")
     client = AliClient(Settings(mode="fixture"))
     run_collection(conn, client, mode="fixture", searches=[saved])
-    store.upsert_categories(conn, [NormalizedCategory(category_id=1420, category_name="Tools")])
+    store.upsert_categories(
+        conn,
+        [
+            NormalizedCategory(category_id=1420, category_name="Tools"),
+            # The fixture's real "home-gadgets-under-15-gbp" search collects
+            # a product under this id (see test_onboarding_synthesize_
+            # fetches_real_market_stats_for_the_chosen_category) --
+            # primary_category_id has an FK to this table, so it needs a row.
+            NormalizedCategory(category_id=1509, category_name="Kitchen Tools"),
+        ],
+    )
     conn.commit()
     conn.close()
     return db_path
@@ -236,7 +246,7 @@ def test_onboarding_synthesize_respects_monthly_cap(client):
 
 
 def test_onboarding_synthesize_happy_path(client, monkeypatch):
-    async def fake_synthesize(*, api_key, wizard_answers):
+    async def fake_synthesize(*, api_key, wizard_answers, market_stats=None):
         from aliexpress_dashboard.client.llm_client import SynthesizedPlan
 
         assert api_key == "test-anthropic-key"
@@ -249,6 +259,7 @@ def test_onboarding_synthesize_happy_path(client, monkeypatch):
             marketing_approach=["organic_content"],
             budget_stage="just_starting",
             summary="A content creator selling kitchen gadgets.",
+            market_gap_analysis="The under-£5 band is saturated; £8+ has less competition.",
             input_tokens=500,
             output_tokens=150,
         )
@@ -269,7 +280,52 @@ def test_onboarding_synthesize_happy_path(client, monkeypatch):
     # Picked directly by the client (Material Web chips), not inferred by
     # the LLM -- passed straight through.
     assert body["primary_category_id"] == 1420
+    assert body["market_gap_analysis"] == "The under-£5 band is saturated; £8+ has less competition."
 
     # Usage got recorded against the real backend: $1/1M*500 + $5/1M*150
     usage = client.get("/api/llm-usage/current-month")
     assert usage.json()["cost_usd"] == pytest.approx(0.00125)
+
+
+def test_onboarding_synthesize_fetches_real_market_stats_for_the_chosen_category(client, monkeypatch):
+    # End to end against the real backend (via live_api_base_url): category
+    # 1509 has exactly one product (2.49 GBP) in this fixture -- confirms
+    # the spa route actually calls the real /categories/{id}/market-stats
+    # route and forwards its output, not a stub.
+    captured = {}
+
+    async def fake_synthesize(*, api_key, wizard_answers, market_stats=None):
+        from aliexpress_dashboard.client.llm_client import SynthesizedPlan
+
+        captured["market_stats"] = market_stats
+        return SynthesizedPlan(seller_type=None, product_niche=None, target_market=None, summary="x")
+
+    monkeypatch.setattr(spa_app_module, "synthesize_business_plan", fake_synthesize)
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    _override_settings(client, anthropic_api_key="test-anthropic-key", llm_monthly_cap_usd=20.0)
+
+    response = client.post(
+        "/api/onboarding/synthesize",
+        json={"answers": {}, "primary_category_id": 1509},
+    )
+    assert response.status_code == 200
+    assert captured["market_stats"]["product_count"] == 1
+    assert captured["market_stats"]["price_min"] == 2.49
+
+
+def test_onboarding_synthesize_without_a_category_sends_no_market_stats(client, monkeypatch):
+    captured = {}
+
+    async def fake_synthesize(*, api_key, wizard_answers, market_stats=None):
+        from aliexpress_dashboard.client.llm_client import SynthesizedPlan
+
+        captured["market_stats"] = market_stats
+        return SynthesizedPlan(seller_type=None, product_niche=None, target_market=None, summary="x")
+
+    monkeypatch.setattr(spa_app_module, "synthesize_business_plan", fake_synthesize)
+    app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
+    _override_settings(client, anthropic_api_key="test-anthropic-key", llm_monthly_cap_usd=20.0)
+
+    response = client.post("/api/onboarding/synthesize", json={"answers": {}})
+    assert response.status_code == 200
+    assert captured["market_stats"] is None
