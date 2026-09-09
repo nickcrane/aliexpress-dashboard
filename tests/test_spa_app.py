@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aliexpress_dashboard.client.ali_client import AliClient
+from aliexpress_dashboard.client.models import NormalizedCategory
 from aliexpress_dashboard.collector import store
 from aliexpress_dashboard.collector.runner import run_collection
 from aliexpress_dashboard.config import Settings, get_settings
@@ -34,6 +35,7 @@ def seeded_db(tmp_path):
     saved = store.get_search_by_name(conn, "home-gadgets-under-15-gbp")
     client = AliClient(Settings(mode="fixture"))
     run_collection(conn, client, mode="fixture", searches=[saved])
+    store.upsert_categories(conn, [NormalizedCategory(category_id=1420, category_name="Tools")])
     conn.commit()
     conn.close()
     return db_path
@@ -234,7 +236,7 @@ def test_onboarding_synthesize_respects_monthly_cap(client):
 
 
 def test_onboarding_synthesize_happy_path(client, monkeypatch):
-    async def fake_synthesize(*, api_key, wizard_answers, categories):
+    async def fake_synthesize(*, api_key, wizard_answers):
         from aliexpress_dashboard.client.llm_client import SynthesizedPlan
 
         assert api_key == "test-anthropic-key"
@@ -246,7 +248,6 @@ def test_onboarding_synthesize_happy_path(client, monkeypatch):
             sales_channels=["tiktok_shop"],
             marketing_approach=["organic_content"],
             budget_stage="just_starting",
-            primary_category_id=None,
             summary="A content creator selling kitchen gadgets.",
             input_tokens=500,
             output_tokens=150,
@@ -256,12 +257,18 @@ def test_onboarding_synthesize_happy_path(client, monkeypatch):
     app.dependency_overrides[require_firebase_login] = lambda: "allowed@example.com"
     _override_settings(client, anthropic_api_key="test-anthropic-key", llm_monthly_cap_usd=20.0)
 
-    response = client.post("/api/onboarding/synthesize", json={"answers": {"niche": "kitchen gadgets"}})
+    response = client.post(
+        "/api/onboarding/synthesize",
+        json={"answers": {"niche": "kitchen gadgets"}, "primary_category_id": 1420},
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["seller_type"] == "content_creator"
     assert body["status"] == "complete"
     assert body["user_email"] == "allowed@example.com"
+    # Picked directly by the client (Material Web chips), not inferred by
+    # the LLM -- passed straight through.
+    assert body["primary_category_id"] == 1420
 
     # Usage got recorded against the real backend: $1/1M*500 + $5/1M*150
     usage = client.get("/api/llm-usage/current-month")

@@ -130,6 +130,12 @@ async def delete_business_profile_proxy(
 
 class OnboardingRequest(BaseModel):
     answers: Dict[str, str]
+    # Picked directly by the user from the real category_tree (Material
+    # Web chips in the wizard) -- not something the LLM is asked to
+    # infer. Confirmed live that asking it to match free-text
+    # product_niche against category names frequently returned null even
+    # for a clear case, silently breaking Products page defaults.
+    primary_category_id: Optional[int] = None
     # Editing an existing version in place vs. creating a new one -- see
     # onboarding_synthesize below.
     profile_id: Optional[int] = None
@@ -158,15 +164,8 @@ async def onboarding_synthesize(
             },
         )
 
-    filters_resp = await backend.get("/filters")
-    if filters_resp.status_code != 200:
-        return JSONResponse(status_code=502, content={"detail": "Could not load categories"})
-    categories = [(node["category_id"], node["category_name"]) for node in filters_resp.json()["category_tree"]]
-
     try:
-        plan = await synthesize_business_plan(
-            api_key=settings.anthropic_api_key, wizard_answers=body.answers, categories=categories
-        )
+        plan = await synthesize_business_plan(api_key=settings.anthropic_api_key, wizard_answers=body.answers)
     except anthropic.RateLimitError as exc:
         return JSONResponse(status_code=429, content={"detail": f"Business plan assistant is busy: {exc}"})
     except anthropic.APIStatusError as exc:
@@ -186,7 +185,7 @@ async def onboarding_synthesize(
         "sales_channels": plan.sales_channels,
         "marketing_approach": plan.marketing_approach,
         "budget_stage": plan.budget_stage,
-        "primary_category_id": plan.primary_category_id,
+        "primary_category_id": body.primary_category_id,
         "summary": plan.summary,
         "status": "complete",
     }

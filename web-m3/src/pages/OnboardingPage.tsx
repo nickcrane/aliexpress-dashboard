@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
-import type { BusinessProfile } from "../types";
+import type { BusinessProfile, CategoryTreeNode } from "../types";
 
 // Chip-style single/multi-select built from plain buttons rather than
 // md-filter-chip: this app has an already-verified pattern for buttons
@@ -83,14 +83,18 @@ function ChoiceRow({
 
 interface WizardFormProps {
   initialProfile: BusinessProfile | null;
-  onSubmit: (fields: Record<string, string>) => Promise<void>;
+  categoryTree: CategoryTreeNode[];
+  onSubmit: (fields: Record<string, string>, primaryCategoryId: number | null) => Promise<void>;
   onCancel: (() => void) | null;
 }
 
-function WizardForm({ initialProfile, onSubmit, onCancel }: WizardFormProps) {
+function WizardForm({ initialProfile, categoryTree, onSubmit, onCancel }: WizardFormProps) {
   const [sellerType, setSellerType] = useState<string | null>(initialProfile?.seller_type ?? null);
   const [productNiche, setProductNiche] = useState(initialProfile?.product_niche ?? "");
   const [targetMarket, setTargetMarket] = useState(initialProfile?.target_market ?? "");
+  const [primaryCategoryId, setPrimaryCategoryId] = useState<number | null>(
+    initialProfile?.primary_category_id ?? null,
+  );
   const [salesChannels, setSalesChannels] = useState<Set<string>>(new Set(initialProfile?.sales_channels ?? []));
   const [marketingApproach, setMarketingApproach] = useState<Set<string>>(
     new Set(initialProfile?.marketing_approach ?? []),
@@ -98,6 +102,16 @@ function WizardForm({ initialProfile, onSubmit, onCancel }: WizardFormProps) {
   const [budgetStage, setBudgetStage] = useState<string | null>(initialProfile?.budget_stage ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Parent categories only ("parent product descriptions" per the ask) --
+  // these are real, already-synced categories with products under them
+  // (dashboard.queries.category_tree), so picking one here can never
+  // produce an id the Products page filter won't recognize -- unlike the
+  // LLM's free-text category-name guess this replaces.
+  const categoryOptions: [string, string][] = categoryTree.map((node) => [
+    String(node.category_id),
+    node.category_name,
+  ]);
 
   function toggleInSet(set: Set<string>, setter: (s: Set<string>) => void, value: string) {
     const next = new Set(set);
@@ -110,20 +124,23 @@ function WizardForm({ initialProfile, onSubmit, onCancel }: WizardFormProps) {
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit({
-        seller_type: SELLER_TYPES.find(([v]) => v === sellerType)?.[1] ?? "",
-        product_niche: productNiche,
-        target_market: targetMarket,
-        sales_channels: [...salesChannels]
-          .map((v) => SALES_CHANNELS.find(([value]) => value === v)?.[1])
-          .filter(Boolean)
-          .join(", "),
-        marketing_approach: [...marketingApproach]
-          .map((v) => MARKETING_APPROACHES.find(([value]) => value === v)?.[1])
-          .filter(Boolean)
-          .join(", "),
-        budget_stage: BUDGET_STAGES.find(([v]) => v === budgetStage)?.[1] ?? "",
-      });
+      await onSubmit(
+        {
+          seller_type: SELLER_TYPES.find(([v]) => v === sellerType)?.[1] ?? "",
+          product_niche: productNiche,
+          target_market: targetMarket,
+          sales_channels: [...salesChannels]
+            .map((v) => SALES_CHANNELS.find(([value]) => value === v)?.[1])
+            .filter(Boolean)
+            .join(", "),
+          marketing_approach: [...marketingApproach]
+            .map((v) => MARKETING_APPROACHES.find(([value]) => value === v)?.[1])
+            .filter(Boolean)
+            .join(", "),
+          budget_stage: BUDGET_STAGES.find(([v]) => v === budgetStage)?.[1] ?? "",
+        },
+        primaryCategoryId,
+      );
     } catch (e) {
       setError(String(e));
     } finally {
@@ -151,6 +168,15 @@ function WizardForm({ initialProfile, onSubmit, onCancel }: WizardFormProps) {
         value={targetMarket}
         oninput={(e: Event) => setTargetMarket((e.target as HTMLInputElement).value)}
       />
+
+      {categoryOptions.length > 0 && (
+        <ChoiceRow
+          label="Which product category fits best?"
+          options={categoryOptions}
+          selected={primaryCategoryId !== null ? new Set([String(primaryCategoryId)]) : new Set()}
+          onToggle={(v) => setPrimaryCategoryId(primaryCategoryId === Number(v) ? null : Number(v))}
+        />
+      )}
 
       <ChoiceRow
         label="Where do you plan to sell?"
@@ -200,6 +226,7 @@ function formatDate(iso: string): string {
 function PlanView({
   activeProfile,
   versions,
+  categoryTree,
   onEdit,
   onNew,
   onActivate,
@@ -207,12 +234,15 @@ function PlanView({
 }: {
   activeProfile: BusinessProfile;
   versions: BusinessProfile[];
+  categoryTree: CategoryTreeNode[];
   onEdit: () => void;
   onNew: () => void;
   onActivate: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
   const otherVersions = versions.filter((v) => v.id !== activeProfile.id);
+  const categoryName = categoryTree.find((node) => node.category_id === activeProfile.primary_category_id)
+    ?.category_name;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -230,6 +260,7 @@ function PlanView({
         >
           {activeProfile.seller_type && <div>Seller type: {activeProfile.seller_type}</div>}
           {activeProfile.product_niche && <div>Niche: {activeProfile.product_niche}</div>}
+          {categoryName && <div>Category: {categoryName}</div>}
           {activeProfile.target_market && <div>Target market: {activeProfile.target_market}</div>}
           {activeProfile.sales_channels.length > 0 && (
             <div>Sales channels: {activeProfile.sales_channels.join(", ")}</div>
@@ -289,6 +320,7 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [activeProfile, setActiveProfile] = useState<BusinessProfile | null>(null);
   const [versions, setVersions] = useState<BusinessProfile[]>([]);
+  const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // null when creating a new plan/version; otherwise the version being edited.
@@ -309,7 +341,10 @@ export function OnboardingPage() {
   useEffect(() => {
     (async () => {
       try {
-        const active = await refreshData();
+        const [active] = await Promise.all([
+          refreshData(),
+          api.getFilters().then((filters) => setCategoryTree(filters.category_tree)),
+        ]);
         // Nothing to view yet -- go straight to the wizard instead of an
         // empty view screen with nothing in it.
         if (!active) setWizardTarget(null);
@@ -322,8 +357,8 @@ export function OnboardingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleWizardSubmit(fields: Record<string, string>) {
-    await api.synthesizeOnboarding(fields, wizardTarget?.id ?? undefined);
+  async function handleWizardSubmit(fields: Record<string, string>, primaryCategoryId: number | null) {
+    await api.synthesizeOnboarding(fields, primaryCategoryId, wizardTarget?.id ?? undefined);
     setWizardTarget(undefined);
     await refreshData();
   }
@@ -362,6 +397,7 @@ export function OnboardingPage() {
         )}
         <WizardForm
           initialProfile={wizardTarget}
+          categoryTree={categoryTree}
           onSubmit={handleWizardSubmit}
           onCancel={activeProfile ? () => setWizardTarget(undefined) : null}
         />
@@ -375,6 +411,7 @@ export function OnboardingPage() {
         <PlanView
           activeProfile={activeProfile}
           versions={versions}
+          categoryTree={categoryTree}
           onEdit={() => setWizardTarget(activeProfile)}
           onNew={() => setWizardTarget(null)}
           onActivate={handleActivate}

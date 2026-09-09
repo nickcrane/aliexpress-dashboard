@@ -130,9 +130,9 @@ export const api = {
   deleteBusinessProfile: (profileId: number) =>
     request<{ status: string }>(`/business-profiles/${profileId}`, { method: "DELETE" }),
 
-  synthesizeOnboarding: (answers: Record<string, string>, profileId?: number) =>
+  synthesizeOnboarding: (answers: Record<string, string>, primaryCategoryId: number | null, profileId?: number) =>
     request<BusinessProfile>("/onboarding/synthesize", {
       method: "POST",
-      body: JSON.stringify({ answers, profile_id: profileId ?? null }),
+      body: JSON.stringify({ answers, primary_category_id: primaryCategoryId, profile_id: profileId ?? null }),
     }),
 };

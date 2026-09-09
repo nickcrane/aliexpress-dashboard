@@ -50,9 +50,6 @@ class _StubAnthropicClient:
         self.messages = _StubMessagesResource(response, capture=self.calls)
 
 
-CATEGORIES = [(44, "Consumer Electronics"), (1420, "Tools")]
-
-
 def _stub_client(plan_input: dict, *, input_tokens=500, output_tokens=150) -> _StubAnthropicClient:
     response = _StubMessage(
         content=[_StubToolUseBlock(input=plan_input)],
@@ -70,18 +67,14 @@ def test_synthesize_maps_full_plan():
             "sales_channels": ["tiktok_shop"],
             "marketing_approach": ["organic_content"],
             "budget_stage": "just_starting",
-            "primary_category_name": "Tools",
             "summary": "A content creator selling kitchen gadgets via TikTok Shop.",
         }
     )
-    plan = _run(
-        synthesize_business_plan(client=stub, wizard_answers={"niche": "kitchen gadgets"}, categories=CATEGORIES)
-    )
+    plan = _run(synthesize_business_plan(client=stub, wizard_answers={"niche": "kitchen gadgets"}))
 
     assert plan.seller_type == "content_creator"
     assert plan.product_niche == "kitchen gadgets"
     assert plan.sales_channels == ["tiktok_shop"]
-    assert plan.primary_category_id == 1420
     assert plan.summary.startswith("A content creator")
     assert plan.input_tokens == 500
     assert plan.output_tokens == 150
@@ -96,32 +89,28 @@ def test_synthesize_handles_null_fields():
             "sales_channels": [],
             "marketing_approach": [],
             "budget_stage": None,
-            "primary_category_name": None,
             "summary": "Not enough information was given to build a plan yet.",
         }
     )
-    plan = _run(synthesize_business_plan(client=stub, wizard_answers={}, categories=CATEGORIES))
+    plan = _run(synthesize_business_plan(client=stub, wizard_answers={}))
 
     assert plan.seller_type is None
-    assert plan.primary_category_id is None
     assert plan.sales_channels == []
 
 
-def test_synthesize_sends_forced_tool_choice_and_category_names():
+def test_synthesize_sends_forced_tool_choice():
     stub = _stub_client({"summary": "x", "sales_channels": [], "marketing_approach": []})
-    _run(synthesize_business_plan(client=stub, wizard_answers={"a": "b"}, categories=CATEGORIES))
+    _run(synthesize_business_plan(client=stub, wizard_answers={"a": "b"}))
 
     assert stub.calls["tool_choice"] == {"type": "tool", "name": "submit_business_plan"}
     tool = stub.calls["tools"][0]
     assert tool["strict"] is True
-    # Nullable enum fields are anyOf: [{type: string, enum: [...]}, {type: null}]
-    # -- confirmed live that the plain type:["string","null"]+enum shorthand
-    # is rejected by Anthropic's strict schema validator.
-    category_field = tool["input_schema"]["properties"]["primary_category_name"]
-    category_enum = category_field["anyOf"][0]["enum"]
-    assert "Consumer Electronics" in category_enum
-    assert "Tools" in category_enum
-    assert category_field["anyOf"][1] == {"type": "null"}
+    assert "primary_category_name" not in tool["input_schema"]["properties"]
+    # Nullable fields are anyOf: [{type: string, ...}, {type: null}] --
+    # confirmed live that the plain type:["string","null"] shorthand is
+    # rejected by Anthropic's strict schema validator.
+    seller_type_field = tool["input_schema"]["properties"]["seller_type"]
+    assert seller_type_field["anyOf"][1] == {"type": "null"}
 
 
 def test_format_answers_skips_empty_values():
