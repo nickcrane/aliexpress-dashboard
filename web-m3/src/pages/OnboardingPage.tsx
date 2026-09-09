@@ -3,7 +3,7 @@ import "@material/web/button/filled-button.js";
 import "@material/web/button/outlined-button.js";
 import "@material/web/button/text-button.js";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
@@ -223,6 +223,160 @@ function formatDate(iso: string): string {
   }
 }
 
+// The finished-plan view is styled after Notion's "Startup Pitch Deck"
+// template (gradient hero band with a badge mark, a bold pull-quote
+// statement, light "callout" stat cards, section dividers, pill tags for
+// list-style fields) rather than the plain field-list this used to be --
+// it's the one screen meant to be read/shown off rather than edited, so
+// it's worth it looking like a pitch deck rather than a data dump. Built
+// entirely from inline styles + the app's existing --md-sys-color-*
+// tokens (theme.css) so it stays correct in dark mode without any new
+// hardcoded colors.
+
+function heroBlockStyle(top: number, left: number, size: number, rotate: number, opacity: number): CSSProperties {
+  return {
+    position: "absolute",
+    top,
+    left,
+    width: size,
+    height: size,
+    borderRadius: "18%",
+    background: "var(--md-sys-color-primary)",
+    opacity,
+    transform: `rotate(${rotate}deg)`,
+  };
+}
+
+function HeroBand({ title, tagline }: { title: string; tagline?: string }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: "var(--md-sys-shape-corner-large)",
+        background:
+          "linear-gradient(135deg, var(--md-sys-color-primary-container), var(--md-sys-color-tertiary-container))",
+        padding: "2.5rem 1.5rem",
+      }}
+    >
+      <div style={heroBlockStyle(-24, -24, 90, 18, 0.3)} />
+      <div style={heroBlockStyle(-36, 70, 60, -14, 0.22)} />
+      <div style={{ ...heroBlockStyle(30, 0, 70, 28, 0.18), left: "auto", right: -20 }} />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.85rem",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            background: "var(--md-sys-color-surface-container-lowest)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.18)",
+          }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z" fill="var(--md-sys-color-primary)" />
+          </svg>
+        </div>
+        <h1
+          style={{
+            fontSize: "1.6rem",
+            margin: 0,
+            color: "var(--md-sys-color-on-primary-container)",
+          }}
+        >
+          {title}
+        </h1>
+        {tagline && (
+          <p
+            style={{
+              margin: 0,
+              maxWidth: "30rem",
+              color: "var(--md-sys-color-on-primary-container)",
+              opacity: 0.9,
+              lineHeight: 1.5,
+            }}
+          >
+            {tagline}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Divider() {
+  return <hr style={{ border: "none", borderTop: "1px solid var(--md-sys-color-outline-variant)", margin: 0 }} />;
+}
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return <h2 style={{ fontSize: "1.1rem", fontWeight: 700, margin: 0 }}>{children}</h2>;
+}
+
+function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div
+      style={{
+        flex: "1 1 12rem",
+        background: "var(--md-sys-color-secondary-container)",
+        color: "var(--md-sys-color-on-secondary-container)",
+        borderRadius: "var(--md-sys-shape-corner-medium)",
+        padding: "1rem 1.1rem",
+      }}
+    >
+      <div style={{ fontSize: "1.1rem", marginBottom: "0.4rem" }} aria-hidden="true">
+        {icon}
+      </div>
+      <div style={{ fontSize: "0.78rem", opacity: 0.85 }}>{label}</div>
+      <div style={{ fontSize: "0.95rem", fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+}
+
+function Pill({ children }: { children: ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "0.3rem 0.7rem",
+        borderRadius: "999px",
+        background: "var(--md-sys-color-tertiary-container)",
+        color: "var(--md-sys-color-on-tertiary-container)",
+        fontSize: "0.8rem",
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function PillGroup({ label, values }: { label: string; values: string[] }) {
+  if (values.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--md-sys-color-on-surface-variant)" }}>
+        {label}
+      </span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+        {values.map((v) => (
+          <Pill key={v}>{v}</Pill>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PlanView({
   activeProfile,
   versions,
@@ -243,33 +397,74 @@ function PlanView({
   const otherVersions = versions.filter((v) => v.id !== activeProfile.id);
   const categoryName = categoryTree.find((node) => node.category_id === activeProfile.primary_category_id)
     ?.category_name;
+  const sellerLabel = SELLER_TYPES.find(([v]) => v === activeProfile.seller_type)?.[1];
+  const budgetLabel = BUDGET_STAGES.find(([v]) => v === activeProfile.budget_stage)?.[1];
+  const salesLabels = activeProfile.sales_channels.map(
+    (v) => SALES_CHANNELS.find(([value]) => value === v)?.[1] ?? v,
+  );
+  const marketingLabels = activeProfile.marketing_approach.map(
+    (v) => MARKETING_APPROACHES.find(([value]) => value === v)?.[1] ?? v,
+  );
+  const hasOpportunity = Boolean(activeProfile.product_niche || activeProfile.target_market);
+  const hasGoToMarket = salesLabels.length > 0 || marketingLabels.length > 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <div>
-        <h1 style={{ fontSize: "1.3rem", marginBottom: "0.5rem" }}>Your business plan</h1>
-        <p>{activeProfile.summary}</p>
-        <div
-          style={{
-            fontSize: "0.85rem",
-            color: "var(--md-sys-color-on-surface-variant)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.25rem",
-          }}
-        >
-          {activeProfile.seller_type && <div>Seller type: {activeProfile.seller_type}</div>}
-          {activeProfile.product_niche && <div>Niche: {activeProfile.product_niche}</div>}
-          {categoryName && <div>Category: {categoryName}</div>}
-          {activeProfile.target_market && <div>Target market: {activeProfile.target_market}</div>}
-          {activeProfile.sales_channels.length > 0 && (
-            <div>Sales channels: {activeProfile.sales_channels.join(", ")}</div>
-          )}
-          {activeProfile.marketing_approach.length > 0 && (
-            <div>Marketing: {activeProfile.marketing_approach.join(", ")}</div>
-          )}
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+      <HeroBand
+        title={activeProfile.product_niche ? activeProfile.product_niche : "Your business plan"}
+        tagline={activeProfile.summary || undefined}
+      />
+
+      {(sellerLabel || categoryName) && (
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+          {sellerLabel && <StatCard icon="🧑‍💼" label="Seller type" value={sellerLabel} />}
+          {categoryName && <StatCard icon="📦" label="Category" value={categoryName} />}
         </div>
-      </div>
+      )}
+
+      {hasOpportunity && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <SectionHeading>The opportunity</SectionHeading>
+            <p style={{ margin: 0, lineHeight: 1.6 }}>
+              {activeProfile.product_niche && (
+                <>
+                  Selling <strong>{activeProfile.product_niche}</strong>
+                </>
+              )}
+              {activeProfile.product_niche && activeProfile.target_market && " to "}
+              {activeProfile.target_market && <strong>{activeProfile.target_market}</strong>}
+              {(activeProfile.product_niche || activeProfile.target_market) && "."}
+            </p>
+          </div>
+        </>
+      )}
+
+      {hasGoToMarket && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <SectionHeading>Go-to-market</SectionHeading>
+            <PillGroup label="Sales channels" values={salesLabels} />
+            <PillGroup label="Marketing approach" values={marketingLabels} />
+          </div>
+        </>
+      )}
+
+      {budgetLabel && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <SectionHeading>Stage</SectionHeading>
+            <div>
+              <Pill>{budgetLabel}</Pill>
+            </div>
+          </div>
+        </>
+      )}
+
+      <Divider />
 
       <div style={{ display: "flex", gap: "0.75rem" }}>
         <md-filled-button type="button" onClick={onEdit}>
@@ -281,36 +476,40 @@ function PlanView({
       </div>
 
       {otherVersions.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h2 style={{ fontSize: "1rem", margin: 0 }}>Other versions</h2>
-          {otherVersions.map((version) => (
-            <div
-              key={version.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "0.75rem",
-                background: "var(--md-sys-color-surface-container-low)",
-                padding: "0.6rem 0.85rem",
-                borderRadius: "var(--md-sys-shape-corner-medium)",
-                fontSize: "0.85rem",
-              }}
-            >
-              <span>
-                {version.product_niche || version.seller_type || "Untitled plan"} · {formatDate(version.created_at)}
-              </span>
-              <span style={{ display: "flex", gap: "0.5rem" }}>
-                <md-text-button type="button" onClick={() => onActivate(version.id)}>
-                  Make active
-                </md-text-button>
-                <md-text-button type="button" onClick={() => onDelete(version.id)}>
-                  Delete
-                </md-text-button>
-              </span>
-            </div>
-          ))}
-        </div>
+        <>
+          <Divider />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <SectionHeading>Other versions</SectionHeading>
+            {otherVersions.map((version) => (
+              <div
+                key={version.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  background: "var(--md-sys-color-surface-container-lowest)",
+                  border: "1px solid var(--md-sys-color-outline-variant)",
+                  padding: "0.7rem 0.9rem",
+                  borderRadius: "var(--md-sys-shape-corner-medium)",
+                  fontSize: "0.85rem",
+                }}
+              >
+                <span>
+                  {version.product_niche || version.seller_type || "Untitled plan"} · {formatDate(version.created_at)}
+                </span>
+                <span style={{ display: "flex", gap: "0.5rem" }}>
+                  <md-text-button type="button" onClick={() => onActivate(version.id)}>
+                    Make active
+                  </md-text-button>
+                  <md-text-button type="button" onClick={() => onDelete(version.id)}>
+                    Delete
+                  </md-text-button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -406,7 +605,7 @@ export function OnboardingPage() {
   }
 
   return (
-    <div style={wrapperStyle}>
+    <div style={{ ...wrapperStyle, maxWidth: "42rem" }}>
       {activeProfile && (
         <PlanView
           activeProfile={activeProfile}
