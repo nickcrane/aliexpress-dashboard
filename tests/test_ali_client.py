@@ -236,3 +236,47 @@ def test_extract_list_missing_or_empty():
     assert extract_list(None) == []
     assert extract_list({}) == []
     assert extract_list("") == []
+
+
+def test_call_ds_api_error_includes_errorcode_and_subcode():
+    from aliexpress_api.errors.exceptions import ApiRequestException
+    from aliexpress_api.skd.api.base import TopException
+
+    from aliexpress_dashboard.client.ali_client import _call_ds_api
+
+    class FakeRequest:
+        def getResponse(self, authrize=None):
+            error = TopException()
+            error.errorcode = "15"
+            error.message = "Remote service error"
+            error.subcode = "isv.invalid-permission"
+            error.submsg = "no permission to call this api"
+            raise error
+
+    with pytest.raises(ApiRequestException) as exc_info:
+        _call_ds_api(FakeRequest())
+
+    detail = str(exc_info.value)
+    assert detail == (
+        "Remote service error (errorcode=15) "
+        "[sub_code=isv.invalid-permission: no permission to call this api]"
+    )
+
+
+def test_call_ds_api_error_without_subcode_omits_sub_code_section():
+    from aliexpress_api.errors.exceptions import ApiRequestException
+    from aliexpress_api.skd.api.base import TopException
+
+    from aliexpress_dashboard.client.ali_client import _call_ds_api
+
+    class FakeRequest:
+        def getResponse(self, authrize=None):
+            error = TopException()
+            error.errorcode = "15"
+            error.message = "Remote service error"
+            raise error
+
+    with pytest.raises(ApiRequestException) as exc_info:
+        _call_ds_api(FakeRequest())
+
+    assert str(exc_info.value) == "Remote service error (errorcode=15)"

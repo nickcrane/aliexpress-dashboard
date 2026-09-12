@@ -165,7 +165,22 @@ def _call_ds_api(request: RestApi, *, access_token: Optional[str] = None) -> dic
         response = request.getResponse(authrize=access_token)
     except Exception as exc:  # noqa: BLE001 - re-raised as our own typed exception below
         if hasattr(exc, "message"):
-            raise ApiRequestException(exc.message) from exc
+            # TopException (skd/api/base.py) -- .message alone is often a
+            # generic string like "Remote service error" with no indication
+            # of which of the many AliExpress-side failure modes it is;
+            # errorcode/subcode/submsg (present on the same exception but
+            # previously discarded here) are what actually distinguish e.g.
+            # a transient gateway error from an expired refresh token.
+            detail = str(exc.message) if exc.message else "unknown error"
+            errorcode = getattr(exc, "errorcode", None)
+            if errorcode:
+                detail = f"{detail} (errorcode={errorcode})"
+            subcode = getattr(exc, "subcode", None)
+            if subcode:
+                submsg = getattr(exc, "submsg", None)
+                detail = f"{detail} [sub_code={subcode}" + (f": {submsg}]" if submsg else "]")
+            logger.warning("AliExpress API returned an error response: %s", detail)
+            raise ApiRequestException(detail) from exc
         raise ApiRequestException(exc) from exc
 
     response = _unwrap_envelope(response)
