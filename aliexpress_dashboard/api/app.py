@@ -99,6 +99,42 @@ def root() -> dict:
     return {"service": "aliexpress-dashboard-api", "status": "ok"}
 
 
+class AuthorizeRequest(BaseModel):
+    code: str
+
+
+@app.post("/authorize", dependencies=[Depends(require_api_key)])
+def authorize_route(
+    body: AuthorizeRequest,
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Completes the interactive AliExpress OAuth flow (collector/cli.py's
+    `authorize --code <code>` command) against THIS service's own real,
+    persistent AE_TOKEN_PATH -- confirmed live that running that CLI
+    command via `railway run` instead writes to the invoker's local
+    filesystem, not this service's volume, so it prints success while
+    leaving production's actually-stored refresh token untouched. That's
+    the exact "it works when we follow the steps, but the app still
+    can't refresh programmatically" symptom this route exists to fix,
+    the same way /refresh-token already avoids needing direct
+    shell/file-system access for the recurring refresh (see module
+    docstring). The `code` itself still has to come from a human
+    completing AliExpress's login/authorize page -- nothing here can get
+    one on its own."""
+    client = AliClient(settings)
+    try:
+        token = client.exchange_code_for_token(body.code)
+    except (ApiRequestException, ApiRequestResponseException) as exc:
+        raise HTTPException(status_code=502, detail=f"AliExpress API error: {exc}") from exc
+
+    return {
+        "status": "ok",
+        "expires_in": token.expires_in,
+        "refresh_expires_in": token.refresh_expires_in,
+        "obtained_at": token.obtained_at,
+    }
+
+
 @app.post("/refresh-token", dependencies=[Depends(require_api_key)])
 def refresh_token(settings: Settings = Depends(get_settings)) -> dict:
     client = AliClient(settings)

@@ -82,6 +82,32 @@ def test_refresh_token_with_no_token_on_file_returns_409(tmp_path):
     assert response.status_code == 409
 
 
+def test_authorize_route_requires_api_key(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    assert client.post("/authorize", json={"code": "fixture-code"}).status_code == 401
+
+
+def test_authorize_route_persists_token_via_this_services_own_settings(tmp_path):
+    # The whole point of this route: it must exchange the code using this
+    # process's own AE_TOKEN_PATH, not something only reachable by
+    # shelling into the service directly (see the route's docstring for
+    # the real incident this fixes).
+    client = _client_with_settings(_settings(tmp_path))
+    response = client.post("/authorize", headers={"X-API-Key": API_KEY}, json={"code": "fixture-code"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["expires_in"] == 86400
+    assert body["refresh_expires_in"] == 172800
+
+    # A subsequent refresh reads back the token this route just saved --
+    # proof it landed in the same place refresh-token looks, not a
+    # caller-local file that refresh-token would never see.
+    refresh_response = client.post("/refresh-token", headers={"X-API-Key": API_KEY})
+    assert refresh_response.status_code == 200
+
+
 def test_refresh_token_success(tmp_path):
     settings = _settings(tmp_path)
     # Seed a token on disk the way the CLI's authorize step would.
