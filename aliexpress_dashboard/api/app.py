@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from aliexpress_api.errors.exceptions import ApiRequestException, ApiRequestResponseException
@@ -97,6 +98,56 @@ def health() -> dict:
 @app.get("/", dependencies=[Depends(require_api_key)])
 def root() -> dict:
     return {"service": "aliexpress-dashboard-api", "status": "ok"}
+
+
+# ------------------------------------------------------------- export ---
+# TEMPORARY: added to back up the persistent volume (business plans, LLM
+# usage history, the AliExpress token) before deleting/recreating Railway
+# services -- see the incident this followed. Same trust level as every
+# other route here (X-API-Key), so it's not a new exposure, but there's
+# no reason to leave a bulk-export surface around once the backup this
+# was built for is done -- remove both routes below after use.
+
+
+@app.get("/export/database", dependencies=[Depends(require_api_key)])
+def export_database(settings: Settings = Depends(get_settings)) -> Response:
+    """Returns a consistent snapshot of the live SQLite DB as a
+    downloadable file. Uses Connection.serialize() against a fresh
+    connection rather than reading db_path's bytes directly -- SQLite's
+    atomic commit protocol (this DB uses the default rollback-journal
+    mode, not WAL -- see db/connection.py) guarantees the on-disk file is
+    always in a valid, consistent state between transactions, so this
+    can't return a torn read even if a write happens moments before."""
+    if not settings.db_path.exists():
+        raise HTTPException(status_code=404, detail="No database file found")
+
+    source = sqlite3.connect(settings.db_path)
+    try:
+        data = source.serialize()
+    finally:
+        source.close()
+
+    return Response(
+        content=bytes(data),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="aliexpress_dashboard_backup.db"'},
+    )
+
+
+@app.get("/export/token", dependencies=[Depends(require_api_key)])
+def export_token(settings: Settings = Depends(get_settings)) -> Response:
+    """Returns the saved AliExpress OAuth token file -- backing this up
+    means a recreated service can skip the manual re-authorize step, as
+    long as the refresh token hasn't itself expired by the time it's
+    restored."""
+    if not settings.token_path.exists():
+        raise HTTPException(status_code=404, detail="No token file found -- run /authorize first")
+
+    return Response(
+        content=settings.token_path.read_bytes(),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="token.json"'},
+    )
 
 
 class AuthorizeRequest(BaseModel):

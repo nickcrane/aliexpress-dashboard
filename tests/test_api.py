@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -80,6 +82,62 @@ def test_refresh_token_with_no_token_on_file_returns_409(tmp_path):
     client = _client_with_settings(_settings(tmp_path))
     response = client.post("/refresh-token", headers={"X-API-Key": API_KEY})
     assert response.status_code == 409
+
+
+def test_export_database_requires_api_key(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    assert client.get("/export/database").status_code == 401
+
+
+def test_export_database_404s_when_no_db_exists(tmp_path):
+    # db_path is never touched -- nothing in this test creates the file.
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/export/database")
+    assert response.status_code == 404
+
+
+def test_export_database_returns_a_real_openable_sqlite_file(tmp_path):
+    _seed_product(tmp_path)
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/export/database")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert "aliexpress_dashboard_backup.db" in response.headers["content-disposition"]
+    # Real SQLite files always start with this exact 16-byte magic header.
+    assert response.content[:16] == b"SQLite format 3\x00"
+
+    # Round-trip: the bytes returned actually open as a working DB with
+    # the seeded product in it, not just a plausible-looking header.
+    restored_path = tmp_path / "restored.db"
+    restored_path.write_bytes(response.content)
+    conn = get_connection(restored_path)
+    row = conn.execute("SELECT product_id FROM products").fetchone()
+    assert row["product_id"] == 1
+
+
+def test_export_token_requires_api_key(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    assert client.get("/export/token").status_code == 401
+
+
+def test_export_token_404s_when_none_saved(tmp_path):
+    client = _client_with_settings(_settings(tmp_path))
+    response = _auth(client, "get", "/export/token")
+    assert response.status_code == 404
+
+
+def test_export_token_returns_the_real_token_file(tmp_path):
+    settings = _settings(tmp_path)
+    AliClient(settings).exchange_code_for_token("fixture-code")
+
+    client = _client_with_settings(settings)
+    response = _auth(client, "get", "/export/token")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    body = json.loads(response.content)
+    assert "access_token" in body
 
 
 def test_authorize_route_requires_api_key(tmp_path):
